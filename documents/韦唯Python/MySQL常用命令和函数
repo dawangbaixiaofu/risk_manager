@@ -1,0 +1,19 @@
+mysql中的函数；
+
+str_to_date(str,format);
+date_format(date,format);
+date_add(date,interval -3 month)
+TIMESTAMPDIFF(type,date1,date2);
+type = year,day,month year_month
+date2-date1
+
+AHP可以参考使用江苏工行的AHP。
+模型可以参考使用自己的模型；
+
+
+log_bin_trust_function_creators=1
+这个变量开始MySQL使用函数的功能。
+length()
+trim()
+extract(year from sysdate()) --返回值是字符串类型
+

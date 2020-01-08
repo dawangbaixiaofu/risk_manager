@@ -1,0 +1,67 @@
+CREATE FUNCTION `f_sb_zero_continous`(
+	v_nsrsbh VARCHAR (30),
+	month_pre VARCHAR (30)
+	) RETURNS int(11)
+begin 
+	DECLARE sb0_lx INT;
+	
+	
+	#全部销售额和sssqz 分组排序,给出列rownum
+	#按照sssqz进行排序,给出列ranks
+	
+	#按照qbxse和ranks-rownum分组，并求qbxse=0的最大累计个数，就是连续0申报
+	
+
+select ifnull(max(sb_zero_continuos),0) as sb_zero_continue_max
+into sb0_lx
+from 
+(
+select
+count(*) as sb_zero_continuos
+from 
+(
+
+SELECT 
+sssqz,qbxse,rownum,ranks
+from 
+(
+	select 
+	base_tmp.sssqz,base_tmp.qbxse,
+	row_number() over(order by sssqz desc) as ranks,
+	row_number() over(partition by qbxse order by sssqz desc) as rownum
+	
+	from 
+		(
+		
+		SELECT distinct t.sssqq, t.sssqz, sum(t.qbxse) qbxse
+		FROM(
+			SELECT DISTINCT t.sssqq, t.sssqz, t.qbxse
+			FROM zx_sbxx t
+			where t.nsrsbh = v_nsrsbh
+			and not exists (select 1
+											from zx_sbxx b
+										 where b.nsrsbh = t.NSRSBH
+											 and t.lrsj < b.lrsj - interval 30 second
+											)	 
+			and ZSXMmc = '增值税'
+			AND date_format(sssqz, '%Y-%m-%d') > month_pre
+			
+			) as t
+			group by t.sssqq, t.sssqz
+			order by sssqz desc,qbxse desc
+
+		) base_tmp
+
+) result
+where qbxse=0
+
+) alias 
+
+group by (ranks-rownum)
+) as alias;
+
+
+return sb0_lx;
+
+
+end

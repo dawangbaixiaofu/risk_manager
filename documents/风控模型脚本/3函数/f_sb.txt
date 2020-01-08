@@ -1,0 +1,301 @@
+CREATE FUNCTION `f_sb`(
+	v_nsrsbh VARCHAR (30),
+	sssq VARCHAR (30),
+	flag VARCHAR (30)
+) RETURNS decimal(10,4)
+BEGIN
+DECLARE zzl_3 DECIMAL (10, 4);
+DECLARE zzl_6 DECIMAL (10, 4);
+
+DECLARE sb_zero_count_3 int;
+DECLARE qbxse_3 DECIMAL (15, 3);
+DECLARE qbxse_6 DECIMAL (15, 3);
+
+
+DECLARE qbxse_12 DECIMAL (15, 3);
+
+DECLARE qbxse_pre_3 DECIMAL (15, 3);
+DECLARE qbxse_pre_6 DECIMAL (15, 3);
+
+declare zzl_12 DECIMAL (15, 3);
+declare zzl_24 DECIMAL (15, 3);
+declare qysds_12 DECIMAL (15, 3);
+declare qysds_24 decimal(15,3);
+DECLARE zzs_12 DECIMAL(15,3);
+DECLARE zzs_24 DECIMAL(15,3);
+
+declare nsze_12 decimal(15,3);#近12个月纳税总额
+declare nsze_24 decimal(15,3);#近12-24个月纳税总额
+DECLARE SUM_PAY_GROWTH_RATE_12 decimal(15,3);
+
+DECLARE cv_12_mean DECIMAL (10, 4);
+
+DECLARE sssqz_max_sb VARCHAR(30);
+DECLARE sssqz_max_pre3 VARCHAR(30);
+DECLARE sssqz_max_pre6 VARCHAR (30);
+DECLARE sssqz_max_pre12 VARCHAR (30);
+DECLARE sssqz_max_pre15 VARCHAR (30);
+DECLARE sssqz_max_pre18 VARCHAR (30);
+DECLARE sssqz_max_pre24 VARCHAR (30);
+
+SELECT
+	max(sssqz),
+	last_day(date_add(max(sssqz), INTERVAL - 3 MONTH)),
+	last_day(date_add(max(sssqz), INTERVAL - 6 MONTH)),
+	last_day(date_add(max(sssqz), INTERVAL - 12 MONTH)),
+	last_day(date_add(max(sssqz), INTERVAL - 15 MONTH)),
+	last_day(date_add(max(sssqz), INTERVAL - 18 MONTH)),
+	last_day(date_add(max(sssqz), INTERVAL - 24 MONTH))
+	
+	INTO
+	sssqz_max_sb,
+	sssqz_max_pre3,
+	sssqz_max_pre6,
+	sssqz_max_pre12,
+	sssqz_max_pre15,
+	sssqz_max_pre18,
+	sssqz_max_pre24
+
+from zx_sbxx t
+WHERE nsrsbh = v_nsrsbh
+	and not exists (SELECT 1 FROM zx_sbxx a where t.nsrsbh = a.nsrsbh and t.lrsj < a.lrsj - interval 3 second)
+	and zsxmmc = '增值税'
+	and sssqz <= sssq
+	;
+
+
+-- 销售额
+SELECT
+	ifnull(qbxse3,0),
+	IFNULL(qbxse6, 0),
+	IFNULL(qbxse12, 0),
+	case when qbxse_pre3 = 0 then null else qbxse_pre3 end,
+	case when qbxse_pre6 = 0 then null else qbxse_pre6 end,
+	
+	
+	ifnull(zzs12,0),
+	ifnull(zzs24,0),
+	ifnull(qysds12,0),
+	ifnull(qysds24,0)
+	
+	INTO 
+	qbxse_3,
+	qbxse_6,
+	qbxse_12,
+	qbxse_pre_3,
+	qbxse_pre_6,
+	zzs_12,
+	zzs_24,
+	qysds_12,
+	qysds_24
+	
+	
+	
+FROM
+	(
+		SELECT
+			sum(
+				CASE
+				WHEN zsxmmc = '增值税'
+				AND sssqz > sssqz_max_pre3 THEN
+					qbxse
+				END
+			) qbxse3,
+			
+			sum(
+				CASE
+				WHEN zsxmmc = '增值税'
+				AND sssqz > sssqz_max_pre6 THEN
+					qbxse
+				END
+			) qbxse6,
+			sum(
+				CASE
+				WHEN zsxmmc = '增值税'
+				AND sssqz > sssqz_max_pre12 THEN
+					qbxse
+				END
+			) qbxse12,
+			sum(
+				CASE
+				WHEN zsxmmc = '增值税'
+				AND sssqz <= sssqz_max_pre12
+				AND sssqz > sssqz_max_pre15 THEN
+					qbxse
+				END
+			) qbxse_pre3,
+			sum(
+				CASE
+				WHEN zsxmmc = '增值税'
+				AND sssqz <= sssqz_max_pre12
+				AND sssqz > sssqz_max_pre18 THEN
+					qbxse
+				END
+			) qbxse_pre6,
+			sum(
+				CASE
+				WHEN zsxmmc = '企业所得税'
+				AND sssqz > sssqz_max_pre12 THEN
+					yjse
+				END
+			) qysds12,
+			sum(case when zsxmmc = '增值税'
+				AND sssqz > sssqz_max_pre12 THEN  
+				ifnull(yjse, 0) + ifnull(ybtse,0) 
+				end) zzs12,
+			sum(
+				CASE
+				WHEN zsxmmc = '企业所得税'
+				AND sssqz > sssqz_max_pre24 THEN
+					yjse
+				END
+			) qysds24,
+			sum(case when zsxmmc = '增值税'
+				AND sssqz > sssqz_max_pre24 THEN  
+				ifnull(yjse, 0) + ifnull(ybtse,0) 
+				end) zzs24
+				
+		FROM
+			(
+				SELECT DISTINCT
+					nsrsbh,
+					date_format(sssqz, '%Y-%m-%d') sssqz,
+					qbxse,
+					yjse,
+					ybtse,
+					zsxmmc
+				FROM
+					zx_sbxx a
+				WHERE
+					nsrsbh = v_nsrsbh
+				AND date_format(sssqz, '%Y-%m-%d') <= sssq
+				AND NOT EXISTS (
+					SELECT
+						1
+					FROM
+						zx_sbxx b
+					WHERE
+						a.nsrsbh = b.nsrsbh
+					AND a.lrsj < b.lrsj - INTERVAL 30 SECOND
+				)
+			) s
+	) t;
+
+#近12个月纳税额增长率
+set nsze_12 = zzs_12 + qysds_12;
+set nsze_24 = zzs_24 + qysds_24 - zzs_12 - qysds_12;
+
+if nsze_24 = 0 then 
+	set nsze_24 = null;
+end if;
+
+set SUM_PAY_GROWTH_RATE_12 = (nsze_12-nsze_24)/nsze_24;
+
+
+
+#最近3期申报为0累计次数
+select 
+ifnull(sum(case when qbxse = 0 then 1 else 0 end),0) sb0_3
+into 
+sb_zero_count_3
+
+from (
+select distinct t.sssqq, t.sssqz, sum(t.qbxse) qbxse
+      from (select distinct t.sssqq, t.sssqz, t.qbxse
+              from zx_sbxx t
+             where t.nsrsbh = v_nsrsbh
+               and not exists
+             (select 1
+                      from zx_sbxx b
+                     where b.nsrsbh = t.nsrsbh
+                       and t.lrsj < b.lrsj - INTERVAL 60 SECOND)
+               and ZSXMmc = '增值税'
+               and sssqz > last_day(date_format(date_add(str_to_date(sssqz_max_sb, '%Y-%m-%d'),interval -3 month), '%Y-%m-%d'))   
+               and sssqz <= sssqz_max_sb) t
+     group by sssqq, sssqz
+) alias;
+
+
+
+-- 变异系数
+SELECT
+	(
+		100 * stddev_samp(qbxse) / if(avg(qbxse)=0,null,avg(qbxse))
+	) INTO cv_12_mean
+FROM
+	(
+		SELECT
+			(
+				CASE
+				WHEN zsxmmc = '增值税'
+				AND sssqz > sssqz_max_pre12 THEN
+					qbxse
+				END
+			) qbxse
+		FROM
+			(
+				SELECT DISTINCT
+					nsrsbh,
+					date_format(sssqz, '%Y-%m-%d') sssqz,
+					qbxse,
+					zsxmmc
+				FROM
+					zx_sbxx a
+				WHERE
+					nsrsbh = v_nsrsbh
+				AND date_format(sssqz, '%Y-%m-%d') <= sssq
+				AND NOT EXISTS (
+					SELECT
+						1
+					FROM
+						zx_sbxx b
+					WHERE
+						a.nsrsbh = b.nsrsbh
+					AND a.lrsj < b.lrsj - INTERVAL 60 SECOND
+				)
+			) s
+	) t;
+
+-- 增长率
+
+
+set	zzl_3 = round((qbxse_3 - qbxse_pre_3) / qbxse_pre_3,4);
+
+
+
+SET zzl_6 = round(
+	(qbxse_6 - qbxse_pre_6) / qbxse_pre_6,
+	4
+);
+
+
+SET zzl_6 = IFNULL(zzl_6, 0);
+
+
+SET cv_12_mean = IFNULL(cv_12_mean, 0);
+
+
+SET qbxse_12 = IFNULL(qbxse_12, 0);
+
+
+IF flag = 'zzl' THEN
+	RETURN zzl_3;
+
+ELSEIF flag = 'sb_zero'	then
+	return sb_zero_count_3;
+	
+ELSEIF flag = 'qbxse' THEN
+	RETURN qbxse_12;
+
+
+ELSEIF flag = 'cv' THEN
+	RETURN cv_12_mean;
+
+
+ELSEIF flag = 'nsze_12_zzl' THEN
+	RETURN SUM_PAY_GROWTH_RATE_12;
+
+END IF;
+
+
+END

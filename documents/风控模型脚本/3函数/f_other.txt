@@ -1,0 +1,52 @@
+CREATE FUNCTION `f_other`(v_nsrsbh VARCHAR (30),
+	sssq VARCHAR (30),
+	flag VARCHAR (30)
+) RETURNS varchar(60) CHARSET utf8
+begin 
+
+declare ID_1 varchar(60);
+declare nl_1 varchar(60);
+declare WFWZ_12M varchar(60);
+
+
+select trim(DBR_ZJHM) 
+    into ID_1
+    from (select DBR_ZJHM, dbrmc
+            from zx_lxrxx a
+           where nsrsbh = v_nsrsbh
+             and bssf = 1
+           order by lrsj desc) alias
+   LIMIT 1;
+  
+  if length(ID_1) = 18 then
+    set nl_1 = extract(year from sysdate()) - substr(ID_1, 7, 4);
+  elseif length(ID_1) = 15 then
+      set nl_1 = extract(year from sysdate()) - concat(19,substr(ID_1, 7, 2));
+  end if;
+
+
+  select 
+	ifnull(sum(case when djrq >= date_format(date_add(sysdate(),interval -12 month), '%Y-%m-%d') 
+									then 1 end),0) 
+    into WFWZ_12M
+    from (select distinct djrq, zywfwzsddm, wfwzlxdm, wfwzztdm
+            from zx_wfwzxx a
+           where djrq >= date_format(date_add(sysdate(), interval -24 month), '%Y-%m-%d')
+             and not exists (select 1
+                    from zx_wfwzxx b
+                   where b.nsrsbh = a.nsrsbh
+                     and a.lrsj < b.lrsj - interval 30 second)
+             and nsrsbh = v_nsrsbh) alias;
+	
+
+#函数返回值	
+	if flag = 'NL' then
+		return nl_1;
+	elseif flag = 'WFWZ' then 
+		return WFWZ_12M;
+	end if;
+
+
+
+
+end

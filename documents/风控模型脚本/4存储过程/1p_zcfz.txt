@@ -1,0 +1,187 @@
+CREATE  PROCEDURE `p_zcfz`(
+	in v_nsrsbh VARCHAR (30),
+	in sssq VARCHAR (30),
+	in flag VARCHAR (30),
+	out result decimal(15,3)
+)
+begin
+declare skssqzmaxlrb varchar(30);
+declare skssqz_maxzcfzb varchar(30);
+declare yysr decimal(15,3);
+declare glfy decimal(15,3);
+declare zchj decimal(15,3);
+declare	ldfzhj decimal(15,3);
+declare ldzchj decimal(15,3);
+DECLARE to_cur_li_revenue decimal(15,3);
+DECLARE MANAGEMENT_COSTS_ASSETS decimal(15,3);
+DECLARE LDBL decimal(15,3);
+
+DECLARE sssqz_max_sb VARCHAR(60);
+
+SELECT
+	max(sssqz)
+	INTO
+	sssqz_max_sb
+FROM
+	zx_sbxx a
+WHERE
+	nsrsbh = v_nsrsbh;
+
+
+drop table if exists temp_lrbxx;
+create temporary table temp_lrbxx as 
+select distinct nsrsbh,
+                    bsrq,
+                    skssqq,
+                    skssqz,
+                    xm,
+                    a.mc,
+                    bqje,
+                    sqje,
+                    bys
+										
+from  zx_lrbxx a
+where not exists(
+	select * from zx_lrbxx b
+	where a.nsrsbh = b.nsrsbh
+	and a.lrsj < b.lrsj - interval 30 second)
+	and substr(skssqz, 6, 5) = '12-31'
+	and substr(skssqz, 1, 4) = substr(sssqz_max_sb, 1, 4) - 1
+  and not exists (select 1
+            from zx_lrbxx b
+           where a.nsrsbh = b.nsrsbh
+             and a.skssqz = b.skssqz
+             and a.skssqq > b.skssqq)
+     and not exists (select 1
+            from zx_lrbxx b
+           where a.nsrsbh = b.nsrsbh
+             and a.skssqz = b.skssqz
+             and a.skssqq = b.skssqq
+             and a.bsrq < b.bsrq)
+	and nsrsbh = v_nsrsbh
+;
+#确定最大利润时间
+select max(skssqz) 
+into skssqzmaxlrb
+from temp_lrbxx;
+
+
+  select sum(case
+               when substr(skssqz, 1, 4) = substr(skssqzmaxlrb, 1, 4) and
+                    (xm like '%营业收入%' or xm like '%主营业务收入%') then
+                bqje
+               Else
+                0
+             end) yysr,
+
+         sum(case
+               when substr(skssqz, 1, 4) = substr(skssqzmaxlrb, 1, 4) and
+                    xm like '%管理费用%' then
+                bqje
+               Else
+                0
+             end) glfy
+    into yysr, glfy
+    from temp_lrbxx a;
+
+
+
+
+drop table if exists temp_zcfzbxx;
+create temporary table temp_zcfzbxx as 
+select distinct a.nsrsbh,
+                    a.skssqq,
+                    a.skssqz,
+                    trim(a.xm) xm,
+                    a.qmye,
+                    a.BSRQ
+                    
+      from zx_zcfzbxx a
+     where a.nsrsbh = v_nsrsbh
+       and substr(skssqz, 6, 5) = '12-31'
+       and substr(skssqz, 1, 4) = substr(sssqz_max_sb, 1, 4) - 1
+       and not exists (select *
+              from zx_zcfzbxx b
+             where b.nsrsbh = v_nsrsbh
+               and a.lrsj < b.lrsj - interval 30 second)
+     and not exists (select 1
+            from zx_zcfzbxx b
+           where b.nsrsbh = a.nsrsbh
+             and b.skssqz = a.skssqz
+             and a.skssqq > b.skssqq)
+     and not exists (select 1
+            from zx_zcfzbxx b
+           where b.nsrsbh = a.nsrsbh
+             and b.skssqz = a.skssqz
+             and a.skssqq = b.skssqq
+             and a.BSRQ < b.BSRQ)
+							 
+			   ;
+			   
+#最大资产负债时间
+select 
+max(skssqz)
+into 
+skssqz_maxzcfzb
+from temp_zcfzbxx;
+
+
+  select sum(case
+               when substr(skssqz, 1, 4) = substr(skssqz_maxzcfzb, 1, 4) and
+                    (xm = '资产合计' or xm = '资产总计') then
+                qmye
+               else
+                0
+             end),
+         sum(case
+               when substr(skssqz, 1, 4) = substr(skssqz_maxzcfzb, 1, 4) and
+                    xm like '流动负债合计%' then
+                qmye
+               else
+                0
+             end),
+         sum(case
+               when substr(skssqz, 1, 4) = substr(skssqz_maxzcfzb, 1, 4) and
+                    xm like '流动资产合计%' then
+                qmye
+               else
+                0
+             end)
+
+    into zchj, ldfzhj, ldzchj
+    from temp_zcfzbxx a;
+
+if yysr = 0 then 
+	set yysr = null;
+end if;
+
+if zchj = 0 then 
+	set zchj = null;
+end if;
+
+if ldfzhj = 0 then
+	set ldfzhj = null;
+end if;
+
+
+
+
+
+
+select ldfzhj / yysr,
+		 glfy / zchj,
+		 round(ldzchj / ldfzhj, 3)
+into to_cur_li_revenue, MANAGEMENT_COSTS_ASSETS, LDBL;
+	
+	#函数返回值
+	if flag = 'LDBL' then 
+		set result = LDBL;
+	elseif flag = 'MANAGEMENT' then
+		set result = MANAGEMENT_COSTS_ASSETS;
+	elseif flag = 'REVENUE' then
+		set result = to_cur_li_revenue;
+	end if;
+	
+	
+	
+end

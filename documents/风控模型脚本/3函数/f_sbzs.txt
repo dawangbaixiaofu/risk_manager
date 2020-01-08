@@ -1,0 +1,59 @@
+CREATE FUNCTION `f_sbzs`(
+	v_nsrsbh VARCHAR (30),
+	sssq VARCHAR (30),
+	flag VARCHAR (30)
+) RETURNS decimal(10,4)
+BEGIN
+
+DECLARE znj_12 INT DEFAULT 0;
+
+SELECT
+	znj_12 INTO znj_12
+FROM
+	(
+		SELECT
+			sum(
+				CASE
+				WHEN skzl_mc = '滞纳金'
+				AND sssq_z > last_day(DATE_ADD(sssq, INTERVAL - 12 MONTH)) THEN
+					1
+				ELSE
+					0
+				END
+			) znj_12
+		FROM
+			(
+				SELECT DISTINCT
+					nsrsbh,
+					sssq_z,
+					skzl_mc
+				FROM
+					zx_sbzsxx a
+				WHERE
+					NOT EXISTS (
+						SELECT
+							1
+						FROM
+							zx_sbzsxx b
+						WHERE
+							a.nsrsbh = b.nsrsbh
+						AND a.lrsj < b.lrsj - INTERVAL 60 SECOND
+					)
+				AND nsrsbh = v_nsrsbh
+				AND date_format(sssq_z, '%Y-%m-%d') <= sssq
+			) t
+	) s;
+
+
+SET znj_12 = IFNULL(znj_12, 0);
+
+
+IF flag = 'znj' THEN
+	RETURN znj_12;
+
+
+END
+IF;
+
+
+END

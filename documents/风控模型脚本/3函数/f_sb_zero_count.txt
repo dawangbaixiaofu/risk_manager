@@ -1,0 +1,41 @@
+CREATE FUNCTION `f_sb_zero_count`(
+	v_nsrsbh VARCHAR (30),
+	month_pre VARCHAR (30)
+) RETURNS int(11)
+BEGIN
+  #Routine body goes here...
+	DECLARE sb_zero_count int;
+	
+	
+	
+	SELECT 
+	sum(case when qbxse = 0 then 1 else 0 end) sum_qbxse
+	into 
+	sb_zero_count
+	
+	from 
+	(
+	
+	SELECT distinct t.sssqq, t.sssqz, sum(t.qbxse) qbxse
+	FROM(
+		SELECT DISTINCT t.sssqq, t.sssqz, t.qbxse
+		FROM zx_sbxx t
+		where t.nsrsbh = v_nsrsbh
+		and not exists (select 1
+										from zx_sbxx b
+									 where b.nsrsbh = t.NSRSBH
+										 and t.lrsj < b.lrsj - interval 30 second
+										)	 
+		and ZSXMmc = '增值税'
+		AND date_format(sssqz, '%Y-%m-%d') > month_pre
+		
+		) as t
+	GROUP BY sssqq, sssqz
+	) as alias ;
+	
+	
+	
+	return sb_zero_count;
+	
+
+END

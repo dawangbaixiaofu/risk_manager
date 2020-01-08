@@ -1,0 +1,14 @@
+先运行ddl_dh.sql 再部署以下函数和过程
+
+函数
+F_JYDX
+F_SB
+F_SB_ZCFZB
+F_ZCFZ
+
+
+存储过程
+p_hbyh_xypf_dh
+p_mx_hbyh_dh
+
+谢谢大佬

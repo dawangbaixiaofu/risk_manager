@@ -1,0 +1,726 @@
+CREATE PROCEDURE `p_AHP_xyyh_csfh`(
+	in v_nsrsbh varchar(60),
+	out fen_ahp varchar(60)
+	)
+begin
+
+declare sssqz_max varchar(60);
+declare sssqq_min varchar(60);
+declare sssqz_max_sb varchar(60);
+declare sssqq_min_sb varchar(60);
+DECLARE skssqz_max_lrb VARCHAR(60);
+
+#AHP需要计算的指标
+DECLARE xwfk_12   int;  
+declare	znj_12 int;
+DECLARE TZBL_1   varchar(30); #法人持股
+DECLARE kyrq_1  decimal(10, 4);  #开业日期        1
+declare yq_3 int;
+declare nsze_12 decimal(20, 4);
+declare jlr_1 decimal(20,4);
+declare qbxse_last decimal(20,4);
+declare profit_ratio decimal(20,4);
+declare nsze_zzl_12	decimal(20,4);
+declare qbxse_12 decimal(20,4);
+declare qbxse_zzl_3 decimal(20,4);
+declare qbxse_zzl_6	decimal(20,4);
+DECLARE	QBXSE_ZZL_12 decimal(20,4);
+declare sb_zero_count_24 int;
+declare sb_zero_continuous_24 int;
+
+#index_value变量
+DECLARE xwfk_12_value int;
+declare znj_12_value int;
+DECLARE TZBL_value varchar(30);
+DECLARE kyrq_1_value decimal(10,4);
+declare yq_3_value int;
+declare nsze_12_value decimal(20,4);
+declare jlr_1_value decimal(20,4);
+declare qbxse_last_value decimal(20,4);
+declare profit_ratio_value decimal(20,4);
+declare nsze_zzl_12_value decimal(20,4);
+declare qbxse_12_value decimal(20,4);
+declare qbxse_zzl_3_value decimal(20,4);
+declare qbxse_zzl_6_value decimal(20,4);
+DECLARE QBXSE_ZZL_12_value decimal(20,4);
+declare sb_zero_count_24_value int;
+declare sb_zero_continuous_24_value int;
+
+##
+declare DBRZJHM_1	varchar(60);
+declare dbrmc_1		varchar(60);
+declare dbrzjlx_1	varchar(60);
+
+DECLARE qbxse_3       decimal(20, 4);  #近2个月销售额                 
+DECLARE qbxse_31       decimal(20, 4);  #近2个月销售额         
+DECLARE qbxse_6       decimal(20, 4);  #近6个月销售额           1
+DECLARE qbxse_1_6     decimal(20, 4);  #近13-18个月销售额       1
+DECLARE qbxse_24      decimal(20, 4);  #近13-24个月销售额       1
+DECLARE nsze_24	 			decimal(20, 4);
+	
+
+
+
+
+
+#成立年限
+select 
+    ROUND(TimeStampDiff(DAY, DATE_FORMAT(substring(kyrq, 1, 10), '%Y-%m-%d') , sysdate() ) /365, 2 )
+    into  kyrq_1
+    from (select *
+            from zx_nsrjcxx t
+           where nsrsbh = v_nsrsbh
+           order by lrsj desc) a
+   limit 1;
+
+
+
+ #法人信息
+  select max(trim(DBR_ZJHM)), max(dbrmc),max(dbr_zjlx_mc)
+    into DBRZJHM_1, dbrmc_1,dbrzjlx_1
+    from (select distinct DBR_ZJHM, dbrmc,dbr_zjlx_mc,lrsj
+            from zx_lxrxx a
+           where nsrsbh = v_nsrsbh
+             and bssf = 1
+           order by lrsj desc
+           ) alias;
+
+
+##法人持股比例
+  select max(tzbl)
+    into TZBL_1
+    from (select distinct nsrmc, tzfmc, tzbl, zjhm, tzje
+            from zx_tzfxx a
+           where not exists (select *
+                    from zx_tzfxx b
+                   where b.nsrsbh = a.nsrsbh
+                     and a.lrsj < b.lrsj - interval 30 second)
+             and nsrsbh = v_nsrsbh) alias
+   where trim(zjhm) = DBRZJHM_1 or dbrmc_1 = TZFMC;
+
+
+	   ###申报信息
+
+	DROP  TABLE IF EXISTS sbxx;
+	CREATE TEMPORARY TABLE sbxx AS
+   (select distinct nsrsbh,
+                    t.sssqq,
+                    t.sssqz,
+                    t.qbxse,
+                    t.ysxssr,
+                    t.ybtse,
+                    t.yjse,
+                    t.sbrq,
+                    t.sbqx,
+                    t.zsxmmc
+					
+                   
+      from zx_sbxx t
+     where t.nsrsbh = v_nsrsbh
+       and sssqq >= date_format(date_add(sysdate(), interval -3 year), '%Y-%m-%d')
+       and ZSXMMC IN ('增值税', '企业所得税')
+       and not exists (select 1
+              from zx_sbxx b
+             where b.nsrsbh = t.nsrsbh
+               and t.lrsj < b.lrsj - interval 30 second));
+	 
+   SELECT 
+   max(sssqz) sssqz_max,
+   min(case when QBXSE > 0 and zsxmmc = '增值税' then sssqq end) sssqq_min
+	 INTO
+	 sssqz_max,
+	 sssqq_min
+	 FROM 
+	 sbxx;
+	 
+	 
+	 #计算申报表涉及到的指标
+	 ###指标加工
+  select sssqz_max,
+         sssqq_min,
+		 qbxse3,
+		 qbxse31,
+         qbxse12,
+         qbxse24,
+         qbxse6,
+         qbxse61,
+         qbxselast,
+         ifnull(zzs12, 0) + ifnull(qysds12, 0),  #近12个月增值税+企业所得税
+         ifnull(zzs24, 0) + ifnull(qysds24, 0)   #近24个月增值税+企业所得税
+         
+    into sssqz_max_sb, #最大申报日期
+         sssqq_min_sb, #最早申报日期（qbxse>0）
+		 qbxse_3,		#近3个月销售额
+		 qbxse_31,		#近13到15个月销售额
+         qbxse_12,     #近12个月销售额
+         qbxse_24,     #近13-24个月销售额
+         qbxse_6,      #近6个月销售额
+         qbxse_1_6,    #近13-18个月销售额
+         qbxse_last,   #上一年度销售额
+         nsze_12,    #近12个月纳税总额
+         nsze_24     #近24个月纳税总额
+         
+    from (select max(sssqz) sssqz_max,
+                 min(case when QBXSE > 0 and zsxmmc = '增值税' then sssqq end) sssqq_min,
+                 sum(case
+                       when sssqz >
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),interval  -12 month),
+                                    '%Y-%m-%d')) and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse12,
+                 sum(case
+                       when sssqz >
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -24 month),
+                                    '%Y-%m-%d')) and
+                            sssqz <=
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                              interval -12 month),
+                                    '%Y-%m-%d')) and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse24,
+                
+                 sum(case
+                       when sssqz >
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -6 month),
+                                    '%Y-%m-%d')) and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse6,
+                 sum(case
+                       when sssqz >
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -18 month),
+                                    '%Y-%m-%d')) and
+                            sssqz <=
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -12 month),
+                                    '%Y-%m-%d')) and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse61,
+                 sum(case
+                       when sssqz >
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -3 month),
+                                    '%Y-%m-%d')) and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse3,
+				sum(case
+                       when sssqz >
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -15 month), '%Y-%m-%d')) and
+				sssqz <= last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -12 month),
+                                    '%Y-%m-%d')) and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse31,
+				
+                 sum(case
+                       when substr(sssqz, 1, 4) = substr(sssqz_max, 1, 4) - 1 and
+                            ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxselast,
+                 sum(case
+                       when sssqz >
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                              interval -12 month),
+                                    '%Y-%m-%d')) AND ZSXMMC IN ('增值税') then
+                        ifnull(yjse, 0) + ifnull(ybtse,0)
+                     end) zzs12,
+                 sum(case
+                       when sssqz >
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                              interval -24 month),
+                                    '%Y-%m-%d')) AND ZSXMMC IN ('增值税') then
+                        ifnull(yjse, 0) + ifnull(ybtse,0)
+                     end) zzs24,
+                 sum(case
+                       when sssqz >
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -12 month),
+                                    '%Y-%m-%d')) AND ZSXMMC IN ('企业所得税') then
+                        ybtse
+                     end) qysds12,
+                 sum(case
+                       when sssqz >
+                            last_day(date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -24 month),
+                                    '%Y-%m-%d')) AND ZSXMMC IN ('企业所得税') then
+                        ybtse
+                     end) qysds24
+            from sbxx t) alias;
+
+	#近6个月，12个月同比增长率				
+	IF qbxse_1_6 = 0 THEN
+		SET qbxse_zzl_6 = ROUND((qbxse_6 - qbxse_1_6)/1,2);
+	ELSE
+		SET qbxse_zzl_6 = ROUND((qbxse_6 - qbxse_1_6)/qbxse_1_6,2);
+	end if;
+
+	if qbxse_24 = 0 THEN
+		SET qbxse_zzl_12 = ROUND((qbxse_12 - qbxse_24)/1,2);
+	ELSE
+		SET qbxse_zzl_12 = ROUND((qbxse_12 - qbxse_24)/qbxse_24,2);
+	END if;
+	
+	if qbxse_31 = 0 then
+		set qbxse_zzl_3 = round((qbxse_3 - qbxse_31)/1,2);
+	else
+		set qbxse_zzl_3 = round((qbxse_3 - qbxse_31)/qbxse_31,2);
+	end if;
+	
+	set @nsze_1_12 = nsze_24-nsze_12;
+	if @nsze_1_12 = 0 then 
+		set nsze_zzl_12 = round((nsze_12-@nsze_1_12)/1,2);
+	else
+		set nsze_zzl_12 = round((nsze_12-@nsze_1_12)/@nsze_1_12,2);
+	end if;
+	
+
+
+
+#征收信息
+DROP TABLE IF EXISTS sbzsxx;
+CREATE TEMPORARY TABLE sbzsxx AS 
+   (select distinct nsrsbh,
+                    sssq_q,
+                    sssq_z,
+                    jkqx,
+                    jkfsrq,
+                    se,
+                    zsxm_mc,
+                    SKZL_MC
+      from zx_sbzsxx a
+     where not exists
+     (select 1
+              from zx_sbzsxx b
+             where b.nsrsbh = a.NSRSBH
+               and a.lrsj < b.lrsj - interval 3 second)
+       and sssq_z >= date_format(date_add(sysdate(), interval -30 month), '%Y-%m-%d')
+       and nsrsbh = v_nsrsbh);
+
+  select ifnull(sum(case
+                   when sssq_z > last_day(date_format(date_add(str_to_date(sssqz_max_sb,'%Y-%m-%d'),interval -3 month),'%Y-%m-%d')) and 
+						jkfsrq > jkqx  then 1
+						else 0
+						end),
+             0), #近3个月逾期次数
+         
+         ifnull(sum(case
+                   when sssq_z >= last_day(date_format(date_add(sysdate(), INTERVAL -12 month), '%Y-%m-%d')) and
+                        skzl_mc in ('行为罚款', '涉税罚款', '没收非法所得', '没收非法所得') then
+                    1
+                 end),
+             0),  #近12个月行为罚款次数
+        
+         ifnull(sum(case
+                   when sssq_z >
+                        last_day(date_format(date_add(str_to_date(sssqz_max_sb, '%Y-%m-%d'),interval -12 month),
+                                '%Y-%m-%d')) and skzl_mc = '滞纳金' and zsxm_mc in ('增值税','企业所得税')
+                 and (date_format(date_add(str_to_date(jkfsrq,'%Y-%m-%d'), interval -3 month),'%Y-%m-%d')>jkqx) then
+                    1
+                 end),
+             0)  #近12个月滞纳金次数
+         
+    into yq_3,xwfk_12,znj_12
+    from sbzsxx a;
+
+
+
+	 #利润表
+	DROP table if EXISTS lrbxx;
+	CREATE TEMPORARY TABLE lrbxx AS
+   (select distinct nsrsbh,
+                    bsrq,
+                    skssqq,
+                    skssqz,
+                    xm,
+                    a.mc,
+                    bqje,
+                    sqje,
+                    bys
+                    
+      from zx_lrbxx a
+     where nsrsbh = v_nsrsbh
+       and  not exists (select *
+              from zx_lrbxx b
+             where b.nsrsbh = a.nsrsbh
+               and a.lrsj < b.lrsj - interval 5 SECOND)
+       and str_to_date(skssqz,'%Y-%m-%d') >= YEAR(SYSDATE())-2
+       and substr(skssqz, 5, 6) = '-12-31'
+			 
+			 and not exists (select 1
+            from zx_lrbxx b
+           where a.nsrsbh = b.nsrsbh
+             and a.skssqz = b.skssqz
+             and a.skssqq > b.skssqq)
+     and not exists (select 1
+            from zx_lrbxx b
+           where a.nsrsbh = b.nsrsbh
+             and a.skssqz = b.skssqz
+             and a.skssqq = b.skssqq
+             and a.bsrq < b.bsrq)
+			 
+			 
+			 );
+ 
+ SELECT 
+ MAX(skssqz)
+ into 
+ skssqz_max_lrb
+ FROM lrbxx;
+			 
+  select sum(case
+               when substr(skssqz, 1, 4) = substr(skssqz_max_lrb, 1, 4) and
+                    XM like '%净利润%' and XM not like '%经营%' and XM not like '%归属%' then 
+                bqje
+             end)
+    into jlr_1
+    from lrbxx a;
+				
+#利润率
+if qbxse_last = 0 then 
+	set profit_ratio = round(jlr_1/1,6);
+else
+	set profit_ratio = round(jlr_1/qbxse_last,6);
+end if;
+
+
+
+
+
+set @month_pre = last_day(date_add(str_to_date(sssqz_max_sb,'%Y-%m-%d'),interval -24 month));
+#累计零申报
+set sb_zero_count_24 = f_sb_zero_count(v_nsrsbh,@month_pre);
+#连续零申报
+
+
+set sb_zero_continuous_24 = f_sb_zero_continous(v_nsrsbh,@month_pre);
+
+
+
+###AHP阀值配置生成woe
+#行为罚款次数
+  if XWFK_12 = 0 then
+   set XWFK_12_value = 1;
+  else
+    if XWFK_12 > 0 then
+   set  XWFK_12_value = -1;
+    else
+     set   XWFK_12_value = 0;
+    end if;
+  end if;
+
+  #近12个月缴纳滞纳金次数
+
+  if znj_12 >= 3 then
+   set znj_12_value = -1;
+  else
+    if znj_12 = 0  then
+    set  znj_12_value = 1;
+    else
+    set  znj_12_value = 0;
+    end if;
+  end if;
+
+  #持股比例
+  if  TZBL_1 < 80 then
+   set TZBL_value =1;
+  else
+    if TZBL_1 >= 80 then
+    set  TZBL_value = 0;
+    else
+     set TZBL_value = -1;
+    end if;
+  end if;
+
+  #经营年限
+  if kyrq_1 > 20 or  kyrq_1 <= 3 then
+   set kyrq_1_value = -1;
+  else
+    if kyrq_1>5 and kyrq_1 <= 10 then
+     set kyrq_1_value = 1;
+    else
+    set  kyrq_1_value =0;
+    end if;
+  end if;
+
+  #近3个月纳税逾期次数（3天以上）
+  if yq_3 > 1   then
+   set yq_3_value = -1;
+  else
+    if yq_3 = 0 then
+     set yq_3_value = 1;
+    else
+    set  yq_3_value = 0;
+    end if;
+  end if;
+
+  #近12个月企业缴税规模（增值税+所得税）
+    if nsze_12 > 200000  then
+     set nsze_12_value = 2;
+    else
+      if nsze_12 > 150000 and nsze_12 <= 200000 then
+      set  nsze_12_value = 1;
+      else
+        if nsze_12 > 60000 and nsze_12 <= 150000 then
+         set nsze_12_value = 0;
+        else
+          if nsze_12 > 30000 and nsze_12 <= 60000 then
+          set  nsze_12_value = -1;
+          else
+           set nsze_12_value = -2;
+          end if;
+        end if;
+      end if;
+    end if;
+
+
+  #（上一年度）经营实体净利润
+  if jlr_1 > 200000  then
+     set jlr_1_value = 2;
+    else
+      if jlr_1 > 80000 and jlr_1 <= 200000 then
+       set jlr_1_value = 1;
+      else
+        if (jlr_1 > 20000 and jlr_1<= 80000) or jlr_1 is null then
+        set  jlr_1_value = 0;
+        else
+          if jlr_1 > -50000 and jlr_1 <= 20000 then
+           set jlr_1_value = -1;
+          else
+           set jlr_1_value = -2;
+          end if;
+        end if;
+      end if;
+    end if;
+
+  #（上一年度）亏损收入比
+
+
+    if  profit_ratio<= 0  then
+     set profit_ratio_value = -1;
+    else
+      if (profit_ratio >0.002 and profit_ratio <= 0.01) or profit_ratio is null then
+        set profit_ratio_value = 0;
+      else
+        if profit_ratio > 0.01 and profit_ratio <= 0.02 then
+         set profit_ratio_value = 2;
+        else
+          if profit_ratio > 0.02 then
+           set profit_ratio_value = 1;
+          else
+            set profit_ratio_value = -2;
+          end if;
+        end if;
+      end if;
+    end if;
+
+  #近12个月纳税总额增长率（增值税+所得税）
+  if nsze_zzl_12 > -0.4 and  nsze_zzl_12 <= 0 then
+     set nsze_zzl_12_value = 0;
+    else
+      if nsze_zzl_12 > 0 and nsze_zzl_12 <= 0.6 then
+       set nsze_zzl_12_value = 1;
+      else
+        if nsze_zzl_12 > 0.6 and nsze_zzl_12 <= 1 then
+         set nsze_zzl_12_value = 2;
+        else
+          if nsze_zzl_12 >1 then
+           set nsze_zzl_12_value = -1;
+          else
+           set  nsze_zzl_12_value = -2;
+          end if;
+        end if;
+      end if;
+    end if;
+
+  #近12月经营实体经营规模（全部销售额）
+    if  qbxse_12 <= 3500000  or qbxse_12 is null  then
+     set qbxse_12_value = -1;
+    else
+      if qbxse_12 > 3500000 and qbxse_12 <= 6000000 then
+       set qbxse_12_value = 0;
+      else
+        if qbxse_12 > 6000000 and qbxse_12 <= 10000000 then
+         set qbxse_12_value = 2;
+        else
+          if qbxse_12 > 10000000 and qbxse_12 <= 20000000 then
+           set qbxse_12_value = 1;
+          else
+           set qbxse_12_value = -2;
+          end if;
+        end if;
+      end if;
+    end if;
+
+
+  #近3月销售额增长率（同比）
+    if qbxse_zzl_3 > -0.2 and qbxse_zzl_3 <= 0  then
+     set qbxse_zzl_3_value = 0;
+    else
+      if qbxse_zzl_3 > 0 and qbxse_zzl_3 <= 0.5 then
+       set qbxse_zzl_3_value = 2;
+      else
+        if qbxse_zzl_3 > 0.5 and qbxse_zzl_3 <= 2 then
+        set  qbxse_zzl_3_value = 1;
+        else
+          if qbxse_zzl_3 > 2 then
+           set qbxse_zzl_3_value = -1;
+          else
+           set qbxse_zzl_3_value = -2;
+          end if;
+        end if;
+      end if;
+    end if;
+
+  #近6月销售额增长率（同比）
+
+    if qbxse_zzl_6 > -0.2 and qbxse_zzl_6 <= 0  then
+     set qbxse_zzl_6_value = 1;
+    else
+      if qbxse_zzl_6 > 0 and qbxse_zzl_6 <= 0.65 then
+     set qbxse_zzl_6_value = 2;
+      else
+        if qbxse_zzl_6 > 0.65 and qbxse_zzl_6 <= 1.8 then
+        set  qbxse_zzl_6_value = 0;
+        else
+          if qbxse_zzl_6 > 1.8 then
+         set   qbxse_zzl_6_value = -1;
+          else
+         set   qbxse_zzl_6_value = -2;
+          end if;
+        end if;
+      end if;
+    end if;
+
+
+  #近12月销售额增长率（同比）
+    if qbxse_zzl_12 > 0.5 then
+    set  qbxse_zzl_12_value = 0;
+    else
+      if qbxse_zzl_12 > 0 and qbxse_zzl_12 <= 0.5 then
+       set   qbxse_zzl_12_value = 1;
+      else
+         set qbxse_zzl_12_value = -1;
+      end if;
+    end if;
+
+
+  #近24个月零申报累计次数
+    if SB_ZERO_COUNT_24 > 2  then
+     set SB_ZERO_COUNT_24_value = -1;
+    else
+      if SB_ZERO_COUNT_24 > 0 and SB_ZERO_COUNT_24 <= 2 then
+        set  SB_ZERO_COUNT_24_value = 0;
+      else
+        set  SB_ZERO_COUNT_24_value = 1;
+      end if;
+    end if;
+
+  #近24个月零申报最大连续次数
+    if SB_ZERO_CONTINUOUS_24 > 2  then
+     set SB_ZERO_CONTINUOUS_24_value = -1;
+    else
+      if SB_ZERO_CONTINUOUS_24 > 0 and SB_ZERO_CONTINUOUS_24 <= 2 then
+        set  SB_ZERO_CONTINUOUS_24_value = 0;
+      else
+        set  SB_ZERO_CONTINUOUS_24_value = 1;
+      end if;
+    end if;
+
+
+##AHP得分
+
+set  fen_ahp =((
+             0.1667*(0.1*XWFK_12_value+ 0.1*znj_12_value+ 0.3*TZBL_value+0.3*kyrq_1_value+0.2*yq_3_value)
+            +0.5*(0.2308*nsze_12_value+ 0.3846*jlr_1_value+ 0.1538*profit_ratio_value+0.2308*nsze_zzl_12_value)
+            +0.3333*(0.2667*qbxse_12_value+ 0.2*qbxse_zzl_3_value+ 0.2*qbxse_zzl_6_value
+           +0.2*qbxse_zzl_12_value  +0.0666*SB_ZERO_COUNT_24_value+0.0667*SB_ZERO_CONTINUOUS_24_value)
+           )-(-1.7223))/(1.7223-(-1.7223));  #归一化
+
+
+
+
+
+
+
+
+#指标值入表
+delete from t_ahp_index_value where nsrsbh = v_nsrsbh;
+insert into t_ahp_index_value
+(
+nsrsbh,
+xwfk_12,
+znj_12,
+TZBL,
+kyrq_1,
+yq_3,
+nsze_12,
+jlr_1,
+qbxse_last,
+profit_ratio,
+nsze_zzl_12,
+qbxse_12,
+qbxse_zzl_3,
+qbxse_zzl_6,
+QBXSE_ZZL_12,
+sb_zero_count_24,
+sb_zero_continuous_24,
+xwfk_12_value,
+znj_12_value,
+TZBL_value,
+kyrq_1_value,
+yq_3_value,
+nsze_12_value,
+jlr_1_value,
+profit_ratio_value,
+nsze_zzl_12_value,
+qbxse_12_value,
+qbxse_zzl_3_value,
+qbxse_zzl_6_value,
+QBXSE_ZZL_12_value,
+sb_zero_count_24_value,
+sb_zero_continuous_24_value,
+fen_ahp
+
+)
+values
+(
+v_nsrsbh,
+xwfk_12,
+znj_12,
+TZBL_1,
+kyrq_1,
+yq_3,
+nsze_12,
+jlr_1,
+qbxse_last,
+profit_ratio,
+nsze_zzl_12,
+qbxse_12,
+qbxse_zzl_3,
+qbxse_zzl_6,
+QBXSE_ZZL_12,
+sb_zero_count_24,
+sb_zero_continuous_24,
+xwfk_12_value,
+znj_12_value,
+TZBL_value,
+kyrq_1_value,
+yq_3_value,
+nsze_12_value,
+jlr_1_value,
+profit_ratio_value,
+nsze_zzl_12_value,
+qbxse_12_value,
+qbxse_zzl_3_value,
+qbxse_zzl_6_value,
+QBXSE_ZZL_12_value,
+sb_zero_count_24_value,
+sb_zero_continuous_24_value,
+fen_ahp
+);
+commit;
+
+end

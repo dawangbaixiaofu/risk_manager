@@ -1,0 +1,60 @@
+-- Create table
+create table T_MOD_IND_CAL_RESULT_HBYH
+(
+  nl_1         VARCHAR2(30),
+  tzbl_1       VARCHAR2(30),
+  jynx_1       VARCHAR2(30),
+  bgrq_fr      VARCHAR2(30),
+  bgcs_fr      VARCHAR2(30),
+  xydj_1       VARCHAR2(30),
+  nsrzt_1      VARCHAR2(30),
+  assb_1       VARCHAR2(30),
+  xwfk_1       VARCHAR2(30),
+  scbs_1       VARCHAR2(30),
+  qs_1         VARCHAR2(30),
+  nsze_1       VARCHAR2(30),
+  yq_24        VARCHAR2(30),
+  yq_12        VARCHAR2(30),
+  yq_6         VARCHAR2(30),
+  jlr_1        VARCHAR2(30),
+  syzqy_1      VARCHAR2(30),
+  kszb_1       VARCHAR2(30),
+  qbxse_12     VARCHAR2(30),
+  qbxse_2      VARCHAR2(30),
+  qbxse_zzl_6  VARCHAR2(30),
+  qbxse_zzl_12 VARCHAR2(30),
+  nsze_zzl_12  VARCHAR2(30),
+  nsze_zz_12   VARCHAR2(30),
+  sb0_lj       VARCHAR2(30),
+  sb0_max      VARCHAR2(30),
+  hy_1         VARCHAR2(30),
+  nsrsbh_1     VARCHAR2(30),
+  yzwfwz_gs    VARCHAR2(30),
+  fr_chigu_gs  VARCHAR2(30),
+  nsrzt_gs     VARCHAR2(30),
+  shixin_bzxr  VARCHAR2(30),
+  xzcf_gs      VARCHAR2(30),
+  jyyc_gs      VARCHAR2(30),
+  qysds_12     VARCHAR2(90),
+  byxs_12      VARCHAR2(90),
+  shixin_gs    VARCHAR2(30),
+  cpws_ccbq    VARCHAR2(30),
+  bzxr_1       VARCHAR2(30),
+  wfwz_1       VARCHAR2(30)
+)
+;
+-- Create table
+create table TAX_RULE_SET_INFO_HBYH
+(
+  rule_no          VARCHAR2(10),
+  rule_name        VARCHAR2(300),
+  rule_limit       VARCHAR2(300),
+  sql_1            VARCHAR2(3600),
+  create_time      DATE,
+  update_time      DATE,
+  direction        VARCHAR2(50),
+  rule_description VARCHAR2(3600),
+  flag             INTEGER,
+  same_or          VARCHAR2(300),
+  index_dm         VARCHAR2(30)
+);

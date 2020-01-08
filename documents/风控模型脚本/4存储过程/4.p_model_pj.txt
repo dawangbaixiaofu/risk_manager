@@ -1,0 +1,222 @@
+CREATE PROCEDURE `p_model_pj`(
+	in v_nsrsbh VARCHAR (30),
+	in sssq VARCHAR (30),
+	out xypj VARCHAR(30)
+)
+BEGIN
+
+#前3个月销售额同比增长率
+DECLARE zzl_3 DECIMAL (10, 4);
+DECLARE zzl_3_woe DECIMAL (10, 4);
+
+#销售额近12个月变异系数
+DECLARE CV_12 DECIMAL (10, 4);
+DECLARE CV_12_WOE DECIMAL (10, 4);
+
+#最近3期申报为0的次数
+declare sb_zero_count_3 int;
+declare sb_zero_count_3_woe DECIMAL (10, 4);
+
+#近12个月纳税额增长率
+declare SUM_PAY_GROWTH_RATE_12 DECIMAL (10, 4);
+declare SUM_PAY_GROWTH_RATE_12_woe DECIMAL (10, 4);
+
+#近12个月滞纳金次数
+declare ZNJ_12 int;
+declare ZNJ_12_woe DECIMAL (10, 4);
+
+#流动比率
+declare LDBL DECIMAL (10, 4);
+declare LDBL_WOE DECIMAL (10, 4);
+
+#管理费用/营业收入
+declare MANAGEMENT_COSTS_REVENUE DECIMAL (10, 4);
+declare MANAGEMENT_COSTS_REVENUE_WOE DECIMAL (10, 4);
+
+#流动负债合计/营业收入
+declare TOTAL_CURRENT_LIABILITIES_REVENUE DECIMAL (10, 4);
+declare TOTAL_CURRENT_LIABILITIES_REVENUE_WOE DECIMAL (10, 4);
+
+#近12月违法违章次数
+declare WFWZ_12M int;
+declare WFWZ_12M_WOE DECIMAL (10, 4);
+
+#法人年龄
+declare NL_1 DECIMAL (10, 4);
+declare NL_1_WOE DECIMAL (10, 4);
+
+#评分模型分数
+DECLARE pf_score DECIMAL (10, 5);
+
+
+DECLARE sssq_1 VARCHAR (30);
+
+
+IF sssq = '' THEN
+	SET sssq_1 = date_format(SYSDATE(), '%Y-%m-%d');
+ELSE
+	SET sssq_1 = sssq;
+END IF;
+
+
+SET zzl_3 = f_sb (v_nsrsbh, sssq_1, 'zzl');
+
+SET CV_12 = f_sb (v_nsrsbh, sssq_1, 'cv');
+set sb_zero_count_3 = f_sb(v_nsrsbh, sssq_1, 'sb_zero');
+set SUM_PAY_GROWTH_RATE_12 = f_sb(v_nsrsbh, sssq_1, 'nsze_12_zzl');
+
+SET ZNJ_12 = f_sbzs (v_nsrsbh, sssq_1, 'znj');
+call p_zcfz(v_nsrsbh, sssq_1,'LDBL',LDBL);
+call p_zcfz(v_nsrsbh, sssq_1,'MANAGEMENT',MANAGEMENT_COSTS_REVENUE);
+call p_zcfz(v_nsrsbh, sssq_1,'REVENUE',TOTAL_CURRENT_LIABILITIES_REVENUE);
+set WFWZ_12M = f_other(v_nsrsbh, sssq_1,'WFWZ');
+set NL_1 = f_other(v_nsrsbh, sssq_1,'NL');
+
+
+-- 申请日前3个月
+select 
+case when ZZL_3 is null then 29.4934
+when ZZL_3 <= -0.5 then 25.1372
+when ZZL_3 <= -0.3 then 64.597
+when ZZL_3 <= 0.1 then 83.7447
+when ZZL_3 <= 2 then 91.9562
+else 69.5004 end,
+
+case when CV_12 is null then 71.4178
+when CV_12 <= 25 then 87.8781
+when CV_12 <= 32 then 80.2516
+when CV_12 <= 50 then 76.1344
+when CV_12 <= 83 then 72.6227
+when CV_12 <= 100 then 61.6072
+else 55.028 end,
+
+case when SB_ZERO_COUNT_3 is null then 71.4178
+when SB_ZERO_COUNT_3 <= 0 then 74.9142
+when SB_ZERO_COUNT_3 <= 1 then 60.6954
+else 5.4023 end,
+
+case when SUM_PAY_GROWTH_RATE_12 is null then 71.4178
+when SUM_PAY_GROWTH_RATE_12 <= -0.33 then 38.8448
+when SUM_PAY_GROWTH_RATE_12 <= 0 then 77.4259
+when SUM_PAY_GROWTH_RATE_12 <= 4 then 82.4717
+else 55.3638 end,
+
+case when ZNJ_12 is null then 71.4178
+when ZNJ_12 <= 0 then 77.8736
+when ZNJ_12 <= 2 then 62.3369
+else 23.1803 end,
+
+
+case when LDBL is null then 40.9765
+when LDBL <= 1.15 then 57.6376
+when LDBL <= 1.29 then 76.4465
+when LDBL <= 1.43 then 90.8915
+when LDBL <= 2.28 then 81.8304
+else 78.1979 end,
+
+case when MANAGEMENT_COSTS_REVENUE is null then 44.8308
+when MANAGEMENT_COSTS_REVENUE <= 0.055 then 74.6283
+when MANAGEMENT_COSTS_REVENUE <= 0.18 then 74.2455
+else 69.9935 end,
+
+case when TOTAL_CURRENT_LIABILITIES_REVENUE is null then 4.6781
+when TOTAL_CURRENT_LIABILITIES_REVENUE <= 0.25 then 102.5487
+when TOTAL_CURRENT_LIABILITIES_REVENUE <= 0.5 then 90.9926
+when TOTAL_CURRENT_LIABILITIES_REVENUE <= 0.7 then 82.1036
+when TOTAL_CURRENT_LIABILITIES_REVENUE <= 1 then 69.4978
+else 0.145 end,
+
+case when WFWZ_12M is null then 71.4178
+when WFWZ_12M <= 0 then 77.6747
+when WFWZ_12M <= 1 then 64.4075
+else 20.9506 end,
+
+case when NL_1 is null then 79.8941
+when NL_1 <= 30 then 69.3797
+when NL_1 <= 53 then 78.5168
+else 30.9738 end
+into ZZL_3_WOE,CV_12_WOE,SB_ZERO_COUNT_3_WOE,SUM_PAY_GROWTH_RATE_12_WOE,ZNJ_12_WOE,LDBL_WOE,MANAGEMENT_COSTS_REVENUE_WOE,TOTAL_CURRENT_LIABILITIES_REVENUE_WOE,WFWZ_12M_WOE,NL_1_WOE
+
+;
+
+#计算模型得分
+SET pf_score = ZZL_3_WOE+CV_12_WOE+SB_ZERO_COUNT_3_WOE+SUM_PAY_GROWTH_RATE_12_WOE+ZNJ_12_WOE+LDBL_WOE+MANAGEMENT_COSTS_REVENUE_WOE+TOTAL_CURRENT_LIABILITIES_REVENUE_WOE+WFWZ_12M_WOE+NL_1_WOE;
+#计算模型评级
+select 
+case when pf_score > 795 then 
+	'A'
+	when pf_score > 740 then 
+	'B'
+	when pf_score > 680 then 
+	'C'
+	when pf_score > 550 then 
+	'D'
+	else
+	'E'
+	end
+into xypj;
+
+	
+
+delete from t_model_index_woe_value where nsrsbh = v_nsrsbh;
+insert into t_model_index_woe_value
+(
+sssqz_max,
+nsrsbh,
+ZZL_3,
+ZZL_3_WOE,
+CV_12,
+CV_12_WOE,
+SB_ZERO_COUNT_3,
+SB_ZERO_COUNT_3_WOE,
+SUM_PAY_GROWTH_RATE_12,
+SUM_PAY_GROWTH_RATE_12_WOE,
+ZNJ_12,
+ZNJ_12_WOE,
+LDBL,
+LDBL_WOE,
+MANAGEMENT_COSTS_REVENUE,
+MANAGEMENT_COSTS_REVENUE_WOE,
+TOTAL_CURRENT_LIABILITIES_REVENUE,
+TOTAL_CURRENT_LIABILITIES_REVENUE_WOE,
+WFWZ_12M,
+WFWZ_12M_WOE,
+NL_1,
+NL_1_WOE,
+pf_score,
+xypj
+)
+values
+(
+sssq_1,
+v_nsrsbh,
+ZZL_3,
+ZZL_3_WOE,
+CV_12,
+CV_12_WOE,
+SB_ZERO_COUNT_3,
+SB_ZERO_COUNT_3_WOE,
+SUM_PAY_GROWTH_RATE_12,
+SUM_PAY_GROWTH_RATE_12_WOE,
+ZNJ_12,
+ZNJ_12_WOE,
+LDBL,
+LDBL_WOE,
+MANAGEMENT_COSTS_REVENUE,
+MANAGEMENT_COSTS_REVENUE_WOE,
+TOTAL_CURRENT_LIABILITIES_REVENUE,
+TOTAL_CURRENT_LIABILITIES_REVENUE_WOE,
+WFWZ_12M,
+WFWZ_12M_WOE,
+NL_1,
+NL_1_WOE,
+pf_score,
+xypj
+);
+
+commit;
+
+
+
+
+END

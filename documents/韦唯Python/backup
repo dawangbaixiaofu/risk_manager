@@ -1,0 +1,931 @@
+CREATE DEFINER=`bs_debug`@`%` PROCEDURE `p_mx_xyyh_csfh`(					  
+																						IN v_nsrsbh       varchar(60),            #纳税人识别号
+																						IN JKR_ID        varchar(60),       #借款人身份证号码
+																						IN jkr_mc        varchar(60),       #借款人姓名
+
+                                          out rule_desc    varchar(60), #准入规则结论
+                                          out AHP_desc     varchar(60), #AHP评分结论
+                                          out model_desc     varchar(60), #信用模型结论
+                                          out PREACCESS        varchar(60),  #审批结论
+                                          out PREACCESSDESC    varchar(4000), #预审批拒绝原因
+
+                                          out AHP_score    Float(20,8), #AHP得分
+                                          out model_score    varchar(60), #模型评级
+                                          out preCreditAmount  Float(20,8), #预授信额度
+                                          out rate             varchar(60) #利率
+																					
+																					)
+BEGIN
+	#变量声明
+	
+	###税务规则
+	DECLARE zzs_count_2	int;
+	declare zzs_count_2_yb int;
+	DECLARE qysds_count_2	int;
+	DECLARE qysds_count_2_xgm	int;
+  DECLARE 	assb_1      	varchar(20);   #按时申报
+  DECLARE 	kyrq_1        float(10, 2);  #开业日期        1
+	DECLARE 	establishment_duration VARCHAR(20);	#成立年限
+  DECLARE		nsrzt_1       varchar(30); #纳税人状态        
+  DECLARE		qs_1          int default 0;  #欠税           
+  DECLARE znj_12        int;      #滞纳金12个月                  1
+  DECLARE znj_6         int;      #滞纳金6个月                 
+
+  DECLARE sshydm_4      varchar(10);   #行业代码         
+  DECLARE sshydm_3      varchar(10);   #行业代码         
+  DECLARE sshydm_2      varchar(10);   #行业代码         
+
+  DECLARE xydj_1        varchar(10);   #信用等级         
+  DECLARE fd_dbr_1      int;          #投资人是否是法定代表人                 1代表是，0代表不是
+  DECLARE DBRZJHM_1     varchar(30); #代表人证件号码                     
+  DECLARE dbrzjlx_1     varchar(30); #代表人证件类型
+  DECLARE dbrmc_1       varchar(30); #代表人名称               1
+  DECLARE nl_1          int;          #年龄                      1
+  DECLARE sssqq_min_sb  varchar(30); #最早申报日期（qbxse>0）     1   计算首次报税
+  DECLARE syzqy_1       float(20, 2);  #所有者权益（上一年度）       1
+  DECLARE lrze_1        float(20, 2);  #利润总额（上一年度）        1
+  DECLARE lrze_2        float(20, 2);  #利润总额（上上年度）
+	DECLARE	yysr_1				FLOAT(20, 2);		#营业收入（上一年度）
+	DECLARE profit_ratio_1 DECIMAL(20,3);	#利润率= 净利润/营业收入
+  DECLARE qbxse_last    float(20, 2);  #上一年度销售额           1
+  DECLARE qbxse_2       float(20, 2);  #近2个月销售额                    1
+  DECLARE qbxse_6       float(20, 2);  #近6个月销售额           1
+	declare qbxse_2_period	decimal(20,2);	#最近两期全部销售额 分为一般纳税人和小规模纳税人
+  DECLARE qbxse_1_6     float(20, 2);  #近13-18个月销售额       1
+  DECLARE qbxse_12      float(20, 2);  #近12个月销售额          1
+  DECLARE qbxse_24      float(20, 2);  #近13-24个月销售额       1
+	DECLARE	QBXSE_ZZL_6		FLOAT(20,	2);		#近6个月全部销售额同比增长率
+	DECLARE	QBXSE_ZZL_12	FLOAT(20,	2);		#近12个月全部销售额同比增长率
+	
+  DECLARE SB_ZERO_CONTINUOUS_24       			 int;      #0连续申报 近24个月                   1
+  DECLARE SB_ZERO_COUNT_24         					 int;      #0累计申报 近24个月                  1
+  DECLARE SB_ZERO_CONTINUOUS_24_xgm          int;
+  DECLARE SB_ZERO_CONTINUOUS_24_yb           int;
+  DECLARE SB_ZERO_COUNT_24_xgm               int;
+  DECLARE SB_ZERO_COUNT_24_yb                int;
+  DECLARE nsze_12       float(20, 2);  #近12个月纳税总额         1
+  DECLARE wfwz_1        int;      #违法违章次数                  1
+  DECLARE swjg_dm       varchar(20);
+  DECLARE coverage_area int;          #企业注册地是否在银行覆盖范围,1代表在覆盖范围内，0表示不在
+
+#####################
+
+	DECLARE sssqz_max			VARCHAR(30);
+	DECLARE sssqq_min			VARCHAR(30);
+  DECLARE sssqz_max_sb  varchar(30); #最大申报日期
+	DECLARE skssqz_max_lrb	VARCHAR(30);
+  DECLARE xwfk_24        int;      #行为罚款次数
+  DECLARE xwfk_12        int;  
+  DECLARE xwfk_6        int;  
+  DECLARE xwfk_3        int;  
+  DECLARE DJZCLXMC_1    varchar(300);  #公司类型
+  DECLARE swsjyxx_1     int;      #最近一期按时申报
+  DECLARE znj_24        int;      #滞纳金24个月
+  DECLARE nsze_24       float(20, 2);  #近24个月纳税总额
+  DECLARE sql1          varchar(3000);
+
+  DECLARE bgcs_fr       int;      #法人变更次数
+  DECLARE lsxs_12       float(20, 4);  #近12个月销售额离散系数
+  DECLARE qysds_12      float(20, 4);  #近12个月企业所得税
+
+
+  #####工商司法
+  DECLARE fr_chigu_gs   varchar(30); #法人持股（工商）          1
+  DECLARE fr_chigu_gs_1 varchar(30); #法人持股（工商）（上市公司）      1
+  DECLARE bgrq_fr       varchar(30); #法人变更日期              1
+  DECLARE nsrzt_gs      int;      #纳税人状态（工商）            1
+	DECLARE	holding_duration	VARCHAR(30);	#持股时长
+  
+  DECLARE bzxr_1        int;      #被执行人  
+  DECLARE bzxr_3        int;                     
+
+  DECLARE shixin_bzxr_3   int;      #失信被执行人                  1
+  DECLARE shixin_bzxr_5   int;
+  DECLARE nsrmc_1       varchar(100);  #纳税人名称
+  DECLARE ban_entry_exit_cs    int;          #近5年触发限制出入境名单记录数 (司法）  2
+  DECLARE ban_high_consumption_cs int;       #近5年触发限制高消费名单记录数(司法)   2
+	DECLARE criminal_or_suspect int;     #罪犯或嫌疑人名单（司法）            2
+	DECLARE judicial_blacklist	int;			#三限名单
+  DECLARE cpws_ccbq     int;                #近2年民事裁判文书中作为被告或被执行人记录数            1
+
+##############
+
+
+####行业规则
+ DECLARE bank_industry         varchar(10); #银行限制行业
+#########
+ DECLARE v_begin       date;     #系统,代码开始时间
+ DECLARE v_end         date;     #代码结束时间
+ DECLARE xypj_1        varchar(30); #模型评级
+ DECLARE fxxs_1        FLOAT(10, 2) default 0;
+ DECLARE nslxmc_1      int;   #小规模/一般纳税人 识别
+ DECLARE jcaj_1        int;   #稽查案件次数
+ DECLARE dqjk_1        FLOAT(20, 2);  #短期借款（上一年度）
+ 
+ ##行列转换需要的变量
+ 
+	DECLARE colname VARCHAR(60);
+	DECLARE v_sql VARCHAR(1000);
+	
+	declare done int default false;  
+	DECLARE a_cursor CURSOR FOR SELECT COLUMN_NAME FROM information_schema.columns WHERE table_name= 'T_MOD_IND_CAL_RESULT_XYYH_CSFH' AND COLUMN_NAME != 'nsrsbh';
+	declare continue HANDLER for not found set done = true;  
+	
+	
+	
+	/*代码开始时间*/
+  select sysdate() into v_begin from dual;
+	/*基础信息*/
+  select case when xydj = 'null' then '未评级'
+							when xydj = 'NULL' then '未评级'
+							when xydj = '' then '未评级'
+						else xydj end,  #decode(xydj,'null', '未评级', 'NULL','未评级', '','未评级', xydj),
+         #行业代码
+         substring(sshydm,-4,4) hydm4,
+         substring(sshydm,-4,3) hydm3,
+         substring(sshydm,-4,2) hydm2,
+
+
+         NSRZTMC,
+				 ROUND(TimeStampDiff(DAY, DATE_FORMAT(substring(kyrq, 1, 10), '%Y-%m-%d') , sysdate() ) /365, 2 ),
+         DJZCLXMC,
+         nsrmc,
+         IF(nslxmc = '一般纳税人',1,3),						#decode(nslxmc, '一般纳税人', 1, 3),
+         substring(swjg_dm,2,4) swjg_dm           #截取税务机构代码 精确到市
+    into xydj_1, sshydm_4, sshydm_3, sshydm_2, nsrzt_1, kyrq_1, DJZCLXMC_1, nsrmc_1, nslxmc_1, swjg_dm
+    from (select *
+            from zx_nsrjcxx t
+           where nsrsbh = v_nsrsbh
+           order by lrsj desc) a
+   LIMIT 1;
+	 
+	 
+	 #企业注册地是否在以下地区：长沙、常德、株洲、岳阳、湘潭、衡阳、郴州
+   #1表示在，0表示不在
+
+   select case when count(*) = 0 then 0 else 1 end #decode(count(*),0,0,1)
+   into coverage_area
+   from coverage_area_bank_xyyh_csfh
+   where swjgdm = swjg_dm;
+	
+	
+	#违法违章次数
+  select count(*)
+    into wfwz_1
+    from (select distinct djrq, zywfwzsddm, wfwzlxdm, wfwzztdm
+            from zx_wfwzxx a
+           where djrq >= DATE_FORMAT(date_add(sysdate(), interval -24 MONTH), '%Y-%m-%d')
+             and not exists (select 1
+                    from zx_wfwzxx b
+                   where b.nsrsbh = a.nsrsbh
+                     and a.lrsj < b.lrsj - 3 / 24 / 60)
+             and nsrsbh = v_nsrsbh
+             and wfwzlxdm in ('01', '02', '03')) alias;
+						 
+	 
+	 #法人身份证号码
+  select max(trim(DBR_ZJHM)), max(dbrmc),max(dbr_zjlx_mc)
+    into DBRZJHM_1, dbrmc_1,dbrzjlx_1
+    from (select distinct DBR_ZJHM, dbrmc,dbr_zjlx_mc,lrsj
+            from zx_lxrxx a
+           where nsrsbh = v_nsrsbh
+             and bssf = 1
+           order by lrsj desc
+           ) alias;
+	 
+	 ##借款人与经营实体关系   经营实体非“法定代表人” 0表示投资人不是法定发表人；1表示投资人是法定发表人
+
+  if DBRZJHM_1 = JKR_ID and jkr_mc = dbrmc_1 then
+    SET fd_dbr_1 = 1;
+  else
+    SET fd_dbr_1 = 0;
+  end if;
+	
+	
+	#法人年龄
+  if length(DBRZJHM_1) = 18 then
+    SET nl_1 = extract(year from sysdate()) - substring(DBRZJHM_1, 7, 4);
+  else
+    if length(DBRZJHM_1) = 15 then
+      SET nl_1 = extract(year from sysdate()) - concat(19 , substr(DBRZJHM_1, 7, 2));
+    end if;
+  end if;
+
+	   /*申报信息*/
+  # 去重
+	DROP  TABLE IF EXISTS sbxx;
+	CREATE TEMPORARY TABLE sbxx AS
+   (select distinct nsrsbh,
+                    t.sssqq,
+                    t.sssqz,
+                    t.qbxse,
+                    t.ysxssr,
+                    t.ybtse,
+                    t.yjse,
+                    t.sbrq,
+                    t.sbqx,
+                    t.zsxmmc,
+										DATE_FORMAT(t.sssqz,'%Y-%m-%d') sssqz,
+                    DATE_FORMAT(t.sssqq,'%Y-%m-%d') sssqq
+                   
+      from zx_sbxx t
+     where t.nsrsbh = v_nsrsbh
+       and sssqq >= date_format(date_add(sysdate(), interval -3 year), '%Y-%m-%d')
+       and ZSXMMC IN ('增值税', '企业所得税')
+       and not exists (select 1
+              from zx_sbxx b
+             where b.nsrsbh = t.nsrsbh
+               and t.lrsj < b.lrsj - interval 3 second));
+	 
+	 SELECT 
+	 max(sssqz) sssqz_max,
+   min(case when QBXSE > 0 and zsxmmc = '增值税' then sssqq end) sssqq_min
+	 INTO
+	 sssqz_max,
+	 sssqq_min
+	 FROM 
+	 sbxx;
+	 
+	 
+	 #近2年经营实体成立年限
+	 SELECT 
+	 count(case when ZSXMMC = '增值税' then sssqz end) ,
+	 count(case when ZSXMMC = '企业所得税' then sssqz end)
+	 into
+	 zzs_count_2,
+	 qysds_count_2
+	 FROM sbxx
+	 where sssqq >= date_format(date_add(sysdate(), interval -2 year), '%Y-%m-%d');
+	 
+	 
+	 #计算申报表涉及到的指标
+	 ###指标加工
+  select sssqz_max,
+         sssqq_min,
+         qbxse12,
+         qbxse24,
+         swsjyxx1,
+         qbxse6,
+         qbxse61,
+         qbxse2,
+         qbxselast,
+         ifnull(zzs12, 0) + ifnull(qysds12, 0),  #近12个月增值税+企业所得税
+         ifnull(zzs24, 0) + ifnull(qysds24, 0),  #近24个月增值税+企业所得税
+         ifnull(qysds12, 0)
+    into sssqz_max_sb, #最大申报日期
+         sssqq_min_sb, #最早申报日期（qbxse>0）
+         qbxse_12,     #近12个月销售额
+         qbxse_24,     #近13-24个月销售额
+         swsjyxx_1,    #最近一期按时申报（未用）
+         qbxse_6,      #近6个月销售额
+         qbxse_1_6,    #近13-18个月销售额
+         qbxse_2,      #近2个月销售额
+         qbxse_last,   #上一年度销售额
+         nsze_12,    #近12个月纳税总额
+         nsze_24,    #近24个月纳税总额
+         qysds_12    #近12个月企业所得税
+    from (select max(sssqz) sssqz_max,
+                 min(case when QBXSE > 0 and zsxmmc = '增值税' then sssqq end) sssqq_min,
+                 sum(case
+                       when sssqz >
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),interval  -12 month),
+                                    '%Y-%m-%d') and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse12,
+                 sum(case
+                       when sssqz >
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -24 month),
+                                    '%Y-%m-%d') and
+                            sssqz <=
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                              interval -12 month),
+                                    '%Y-%m-%d') and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse24,
+                 ifnull(sum(case
+                           when sssqz = sssqz_max and sbrq > sbqx and
+                                ZSXMMC IN ('增值税') then
+                            1
+                         end),
+                     0) swsjyxx1,
+                 sum(case
+                       when sssqz >
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -6 month),
+                                    '%Y-%m-%d') and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse6,
+                 sum(case
+                       when sssqz >
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -18 month),
+                                    '%Y-%m-%d') and
+                            sssqz <=
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -12 month),
+                                    '%Y-%m-%d') and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse61,
+                 sum(case
+                       when sssqz >
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -2 month),
+                                    '%Y-%m-%d') and ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxse2,
+                 sum(case
+                       when substr(sssqz, 1, 4) = substr(sssqz_max, 1, 4) - 1 and
+                            ZSXMMC IN ('增值税') then
+                        qbxse
+                     end) qbxselast,
+                 sum(case
+                       when sssqz >
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                              interval -12 month),
+                                    '%Y-%m-%d') AND ZSXMMC IN ('增值税') then
+                        ifnull(yjse, 0) + ifnull(ybtse,0)
+                     end) zzs12,
+                 sum(case
+                       when sssqz >
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                              interval -24 month),
+                                    '%Y-%m-%d') AND ZSXMMC IN ('增值税') then
+                        ifnull(yjse, 0) + ifnull(ybtse,0)
+                     end) zzs24,
+                 sum(case
+                       when sssqz >
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -12 month),
+                                    '%Y-%m-%d') AND ZSXMMC IN ('企业所得税') then
+                        ybtse
+                     end) qysds12,
+                 sum(case
+                       when sssqz >
+                            date_format(date_add(str_to_date(sssqz_max, '%Y-%m-%d'),
+                                               interval -24 month),
+                                    '%Y-%m-%d') AND ZSXMMC IN ('企业所得税') then
+                        ybtse
+                     end) qysds24
+            from sbxx t) alias;
+						
+						
+	#最近两期全部销售额，分为一般纳税人和小规模纳税人情况
+	if nslxmc_1 = 1 then
+		set qbxse_2_period = qbxse_2;
+	else 
+		set qbxse_2_period = qbxse_6;
+	end if;
+	
+	#近6个月，12个月同比增长率				
+	IF qbxse_1_6 = 0 THEN
+		SET qbxse_zzl_6 = ROUND((qbxse_6 - qbxse_1_6)/1,2);
+	ELSE
+		SET qbxse_zzl_6 = ROUND((qbxse_6 - qbxse_1_6)/qbxse_1_6,2);
+	end if;
+
+	if qbxse_24 = 0 THEN
+		SET qbxse_zzl_12 = ROUND((qbxse_12 - qbxse_24)/1,2);
+	ELSE
+		SET qbxse_zzl_12 = ROUND((qbxse_12 - qbxse_24)/qbxse_24,2);
+	END if;
+
+
+
+
+#征收信息
+DROP TABLE IF EXISTS sbzsxx;
+
+CREATE TEMPORARY TABLE sbzsxx AS 
+   (select distinct nsrsbh,
+                    sssq_q,
+                    sssq_z,
+                    jkqx,
+                    jkfsrq,
+                    se,
+                    zsxm_mc,
+                    SKZL_MC
+      from zx_sbzsxx a
+     where not exists
+     (select 1
+              from zx_sbzsxx b
+             where b.nsrsbh = v_nsrsbh
+               and a.lrsj < b.lrsj - interval 3 second)
+       and sssq_z >= date_format(date_add(sysdate(), interval -30 month), '%Y-%m-%d')
+       and nsrsbh = v_nsrsbh);
+
+  select ifnull(sum(case
+                   when sssq_z <= sssqz_max_sb and tzlx_dm in (1,4) and 
+                        (jkfsrq is null or jkfsrq = 'NULL') and
+                        jkqx < date_format(sysdate(), '%Y-%m-%d') and se > 1 then
+                    1
+                 end),
+             0), #是否欠税
+          ifnull(sum(case
+               when sssq_z >= date_format(date_add(sysdate(), interval -24 month), '%Y-%m-%d') and
+                    skzl_mc in ('行为罚款', '涉税罚款', '没收非法所得', '没收非法所得') then
+                1
+             end),
+         0),  #近24个月行为罚款次数
+         ifnull(sum(case
+                   when sssq_z >= date_format(date_add(sysdate(), INTERVAL -12 month), '%Y-%m-%d') and
+                        skzl_mc in ('行为罚款', '涉税罚款', '没收非法所得', '没收非法所得') then
+                    1
+                 end),
+             0),  #近12个月行为罚款次数
+         ifnull(sum(case
+                   when sssq_z >= date_format(date_add(sysdate(),interval -6 month), '%Y-%m-%d') and
+                        skzl_mc in ('行为罚款', '涉税罚款', '没收非法所得', '没收非法所得') then
+                    1
+                 end),
+             0),  #近6个月行为罚款次数
+         ifnull(sum(case
+                   when sssq_z >= date_format(date_add(sysdate(),interval -3 month), '%Y-%m-%d') and
+                        skzl_mc in ('行为罚款', '涉税罚款', '没收非法所得', '没收非法所得') then
+                    1
+                 end),
+             0),  #近3个月行为罚款次数
+         ifnull(sum(case
+                   when sssq_z >
+                        date_format(date_add(str_str_to_date(sssqz_max_sb, '%Y-%m-%d'),interval -12 month),
+                                '%Y-%m-%d') and skzl_mc = '正税' and zsxm_mc in ('增值税','企业所得税')
+                 and (date_format(date_add(str_str_to_date(jkfsrq,'%Y-%m-%d'), interval -3 month),'%Y-%m-%d')>jkqx) then
+                    1
+                 end),
+             0),  #近12个月滞纳金次数
+          ifnull(sum(case
+                   when sssq_z >
+                        date_format(date_add(str_str_to_date(sssqz_max_sb, '%Y-%m-%d'), interval -6 month),'%Y-%m-%d') 
+												and skzl_mc = '正税' and zsxm_mc in ('增值税','企业所得税')
+                 and (date_format(date_add(str_str_to_date(jkfsrq,'%Y-%m-%d'), interval -3 month),'%Y-%m-%d')>jkqx) then
+                    1
+                 end),
+             0),  #近6个月滞纳金次数
+         ifnull(sum(case
+                   when sssq_z >
+                        date_format(date_add(str_str_to_date(sssqz_max_sb, '%Y-%m-%d'),interval -24 month),
+                                '%Y-%m-%d') and skzl_mc = '正税' and zsxm_mc in ('增值税','企业所得税')
+                 and (date_format(date_add(str_str_to_date(jkfsrq,'%Y-%m-%d'),interval -3 month),'%Y-%m-%d')>jkqx) then
+                    1
+                 end),
+             0)  #近24个月滞纳金次数（未用）
+    into qs_1, xwfk_24,xwfk_12,xwfk_6,xwfk_3, znj_12, znj_6, znj_24
+    from sbzsxx a;
+		
+		
+	
+		 
+		 #利润表
+	DROP table if EXISTS lrbxx;
+	CREATE TEMPORARY TABLE lrbxx AS
+   (select distinct nsrsbh,
+                    bsrq,
+                    skssqq,
+                    skssqz,
+                    xm,
+                    a.mc,
+                    bqje,
+                    sqje,
+                    bys,
+                    skssqz #skssqz_max_lrb
+      from zx_lrbxx a
+     where nsrsbh = v_nsrsbh
+       and  not exists (select *
+              from zx_lrbxx b
+             where b.nsrsbh = a.nsrsbh
+               and a.lrsj < b.lrsj - interval 5 SECOND)
+       and skssqz >= YEAR(SYSDATE())-2
+       and substr(skssqz, 5, 6) = '-12-31');
+ 
+ SELECT 
+ MAX(skssqz)
+ into 
+ skssqz_max_lrb
+ FROM lrbxx;
+			 
+  select sum(case
+               when substr(skssqz, 1, 4) = substr(skssqz_max_lrb, 1, 4) and
+                    XM like '%净利润%' and XM not like '%经营%' and XM not like '%归属%' then 
+                bqje
+             end),
+         sum(case
+               when substr(skssqz, 1, 4) = substr(skssqz_max_lrb, 1, 4) - 1 and
+                    XM like '%净利润%' and XM not like '%经营%' and XM not like '%归属%' then 
+                bqje
+             end),
+				 sum(CASE 
+								WHEN substr(skssqz, 1, 4) = substr(skssqz_max_lrb, 1, 4)  and 
+									(XM like '%主营业务收入%' or XM like '%营业收入%' )
+									THEN bqje END)
+
+    into lrze_1, lrze_2, yysr_1
+    from lrbxx a
+   where skssqz in (select max(c.skssqz)
+                      from lrbxx c
+                     where a.nsrsbh = c.nsrsbh
+                     group by substr(c.skssqz, 1, 4))
+     and not exists (select 1
+            from lrbxx b
+           where a.nsrsbh = b.nsrsbh
+             and a.skssqz = b.skssqz
+             and a.skssqq > b.skssqq)
+     and not exists (select 1
+            from lrbxx b
+           where a.nsrsbh = b.nsrsbh
+             and a.skssqz = b.skssqz
+             and a.skssqq = b.skssqq
+             and a.bsrq < b.bsrq);
+	 
+	 #净利润率
+	 SELECT case when yysr_1 = 0 then round(lrze_1/1,4)
+					else ROUND(lrze_1/yysr_1,4)
+					end
+					into profit_ratio_1;
+		 
+		 /*财报信息*/
+  #资产负债表
+	DROP TABLE if EXISTS zcfzb;
+	CREATE TEMPORARY TABLE zcfzb AS
+   (select distinct a.nsrsbh,
+                    a.skssqq,
+                    a.skssqz,
+                    trim(a.xm) xm,
+                    a.qmye,
+                    a.BSRQ
+      from zx_zcfzbxx a
+     where a.nsrsbh = v_nsrsbh
+       and not exists (select *
+              from zx_zcfzbxx b
+             where b.nsrsbh = a.nsrsbh
+               and a.lrsj < b.lrsj - INTERVAL 3 second)
+     and skssqz >= year(sysdate()) - 2  #上年度、上上年度年报或第四季度季报
+     and substr(skssqz, 5, 6) = '-12-31');
+
+  select sum(case
+	
+               when XM like '%所有者权益（或股东权益）合计%' then
+                qmye
+             end),
+     sum(case
+               when xm like '%短期借款%' then
+                qmye
+             end)
+    into syzqy_1,dqjk_1
+    from zcfzb a
+   where a.skssqz =
+         (select max(b.skssqz) from zcfzb b where a.nsrsbh = b.nsrsbh) #取最近一期
+     and not exists (select 1
+            from zcfzb b
+           where b.nsrsbh = a.nsrsbh
+             and b.skssqz = a.skssqz
+             and a.skssqq > b.skssqq)
+     and not exists (select 1
+            from zcfzb b
+           where b.nsrsbh = a.nsrsbh
+             and b.skssqz = a.skssqz
+             and a.skssqq = b.skssqq
+             and a.BSRQ < b.BSRQ);
+
+
+ 
+ 
+
+set @month_pre24 = date_add(str_to_date(sssqz_max_sb,'%Y-%m-%d'),interval -24 month);
+#累计0申报
+set SB_ZERO_COUNT_24 = f_sb_zero_count(v_nsrsbh,@month_pre24);
+#连续0申报
+set SB_ZERO_CONTINUOUS_24 = f_sb_continous(v_nsrsbh,@month_pre24);
+
+
+
+#按时申报，分为一般纳税人和小规模纳税人
+    if sssqz_max_sb >=
+				date_add(DATE_FORMAT(date_add(date_add(sysdate(), interval -nslxmc_1 + 1 month),interval -22 day),'%Y-%m-01'),interval -1 day)
+					then
+    set assb_1 = 0;
+  else
+    set assb_1 = 1;
+  end if;
+
+ 
+ ##工商规则
+ ##法人持股比例
+  select max(replace(FUNDED_RATIO, '%', ''))
+    into fr_chigu_gs
+    from (select *
+            from HSJ_SHARE_HOLDER t
+           where dbrmc_1 = SHARE_HOLDER_NAME
+             and ENT_NAME = nsrmc_1
+           order by lrsj desc) alias
+   LIMIT 1;
+         #上市公司 法人持股比例
+  select max(replace(ratio, '%', ''))
+    into fr_chigu_gs_1
+    from (select *
+            from HSJ_TOP_TEN_SHARE_HOLDER t
+           where ent_name = nsrmc_1
+             and share_holder_name = dbrmc_1
+           order by lrsj desc) alias
+    LIMIT 1;
+  set fr_chigu_gs = ifnull(fr_chigu_gs, fr_chigu_gs_1);
+	
+	
+	
+	#法人变更次数，法人变更日期
+  select count(*),
+         round(timestampdiff(day,str_to_date(ifnull(max(substr(bgrq, 1, 10)), '2011-01-01'),'%Y-%m-%d'),sysdate()))
+    into bgcs_fr, bgrq_fr
+    from (select distinct bgrq, bgqnr, bghnr
+            from ZX_BGDJXX a
+           where bgxmmc in ('法定代表人', '法定代表人（负责人）姓名', '法定代表人（负责人、业主）姓名')
+             and nsrsbh = v_nsrsbh
+             and bgrq >= date_format(date_add(sysdate(),interval -2 year), '%Y-%m-%d')
+             and bgqnr != bghnr
+             and not exists
+           (select *
+                    from ZX_BGDJXX b
+                   where b.nsrsbh = a.nsrsbh
+                     and a.lrsj < b.lrsj - interval 3 second)) alias;
+	
+   #工商状态
+  select	case when  COUNT(*) = 0 #decode(count(*),0,0,1)
+						then 0 else 1 end 
+    into nsrzt_gs
+    from (select *
+            from HSJ_BASIC
+           where ent_name = nsrmc_1
+           order by lrsj desc) alias 
+   WHERE ent_status in ('吊销','注销','其他')
+	 LIMIT 1;
+	 
+	 #label
+	 #申请人持股时长
+	 SELECT max(TIMESTAMPDIFF(day,str_to_date(con_date,'%Y-%m-%d'),sysdate()))
+	 into holding_duration
+	 
+	 FROM HSJ_SHARE_HOLDER t
+	 WHERE share_holder_name = dbrmc_1
+					and ent_name = nsrmc_1
+	 order by lrsj desc
+	 LIMIT 1;
+	 
+	 
+	 
+	 
+	 
+	 #司法
+   
+   #被执行人（企业法人或者企业命中）   近12个月
+  select count(*)
+    into bzxr_1
+    from HSJ_LAWSUIT_DETAIL_ZXGG t,
+         hsj_basic a
+   where t.ent_name = a.ent_name
+     and (a.ent_name = nsrmc_1 or a.fr_name = dbrmc_1)         #企业或者法人
+     #and( pname = nsrmc_1 or pname = dbrmc_1)
+     and sort_time > date_format(date_add(sysdate(), interval -1 year), '%Y-%m-%d');
+     
+   
+   #被执行人（企业法人或者企业命中）   近3年
+  select count(*)
+    into bzxr_3
+    from HSJ_LAWSUIT_DETAIL_ZXGG t,
+         hsj_basic a
+   where t.ent_name = a.ent_name
+     and (a.ent_name = nsrmc_1 or a.fr_name = dbrmc_1)         #企业或者法人
+     #and( pname = nsrmc_1 or pname = dbrmc_1)
+     and sort_time > date_format(date_add(sysdate(), interval -3 year), '%Y-%m-%d');
+   
+	  #失信被执行人 近3年
+  select count(*)
+    into shixin_bzxr_3
+    from hsj_lawsuit_detail_shixin t,
+         hsj_basic a
+   where t.ent_name = a.ent_name
+     and SORT_TIME > date_format(date_add(sysdate(),interval -3 year), '%Y-%m-%d')
+     and (a.ent_name = nsrmc_1 or a.fr_name = dbrmc_1)      #企业或者法人
+     ;
+   
+    #失信被执行人 近5年
+  select count(*)
+    into shixin_bzxr_5
+    from hsj_lawsuit_detail_shixin t,
+         hsj_basic a
+   where t.ent_name = a.ent_name
+     and SORT_TIME > date_format(date_add(sysdate(),interval -5 year), '%Y-%m-%d')
+     and (a.ent_name = nsrmc_1 or a.fr_name = dbrmc_1)      #企业或者法人
+     ;
+	
+   #三限名单
+   ###近5年触发限制高消费名单记录数(司法)   
+  ##-近5年触发限制出入境名单记录数 (司法）  
+  select count(ban_entry_exit), count(ban_high_consumption)
+  into ban_entry_exit_cs,ban_high_consumption_cs
+  from (
+  select
+  case when t.title like '%限制出入境%'
+    then 1 end ban_entry_exit,
+  case when t.title like '%限制消费%'
+    then 1 end ban_high_consumption
+  from HSJ_LAWSUIT t,
+       hsj_basic   a
+  where t.ent_name = a.ent_name
+  and a.ent_name = nsrmc_1 and a.fr_name =  dbrmc_1        #企业法人
+  and data_type='bgt'
+  and sort_time >= date_format(date_add(sysdate(), interval -5 year),'%Y-%m-%d') and sort_time < date_format(sysdate(),'%Y-%m-%d')
+
+  ) alias;
+	
+	#通缉名单
+  select case when count(CASE_NO) = 0 then 0 else 1 end #decode(count(CASE_NO),0,0,1)
+   into criminal_or_suspect
+   from  hsj_lawsuit_detail_bgt t,
+         hsj_basic a
+   where t.ent_name = a.ent_name
+         and a.ent_name = nsrmc_1 and a.fr_name = dbrmc_1
+         and t.yiju like '%刑%'; 
+	
+	#三限名单
+	SELECT case when ban_entry_exit_cs>0 or ban_high_consumption_cs>0 or criminal_or_suspect>0 
+	then 1 else 0 end 
+	into judicial_blacklist from dual;
+
+	
+ 
+ #被告人
+  select count(*)
+    into cpws_ccbq
+    from (select distinct a.CPWS_ID
+            from hsj_lawsuit_detail_cpws        a,
+                 hsj_lawsuit_detail_cpws_partys b
+           where a.cpws_id = b.cpws_id
+             and b.title in ('被告', '被执行人')
+             and a.case_type like ('%民事案件%')
+             and sort_time >= date_format(date_add(sysdate(),interval -2 year), '%Y-%m-%d')
+             and (b.pname  = nsrmc_1 or  b.pname = dbrmc_1)       #企业或者法人
+             ) alias;
+  /*label 
+	
+	#限制性行业
+  #行业 判断是否为禁入行业，1是0否
+  select decode(count(*), 0, 0, 1)
+    into bank_industry
+    from t_hydm_xyyh_csfh_jr
+   where hydm = sshydm_4
+   or hydm = sshydm_3
+   or hydm = sshydm_2;         
+	
+	*/
+	
+ #指标结果表，需要有预授信额度，是否拒绝，拒绝原因，申请时间
+ #删除重复数据
+  delete FROM T_MOD_IND_CAL_RESULT_XYYH_CSFH where nsrsbh = v_nsrsbh;
+  #插入指标加工结果
+  insert into T_MOD_IND_CAL_RESULT_XYYH_CSFH
+	(
+	#税务指标
+	fd_dbr_1,
+	nl_1,
+	zzs_count_2,
+  qysds_count_2,
+	coverage_area,
+	xydj_1,
+	wfwz_1,
+	nsrzt_1,
+	znj_12, 
+	znj_6,
+	qs_1,#当前欠税
+	scbs_1,
+	nsze_12,
+	lrze_1,
+	profit_ratio_1,
+	syzqy_1,
+	qbxse_12,
+	qbxse_2,
+	nslxmc_1,
+	qbxse_2_period,
+	qbxse_zzl_6,
+	qbxse_zzl_12,
+	xwfk_24,
+	xwfk_12,
+	xwfk_6,
+	xwfk_3,
+	SB_ZERO_CONTINUOUS_24,
+	SB_ZERO_COUNT_24,
+	assb_1,
+	
+	##工商规则
+	fr_chigu_gs,
+	bgcs_fr, 
+	bgrq_fr,
+	nsrzt_gs,
+	holding_duration,#申请人持股时长
+	
+	###司法规则
+	bzxr_1,
+	bzxr_3,
+	shixin_bzxr_3,
+	shixin_bzxr_5,
+	ban_entry_exit_cs,
+	ban_high_consumption_cs,
+	criminal_or_suspect,
+	judicial_blacklist,
+	cpws_ccbq
+	
+	##限制性行业
+	)
+	VALUES
+	(
+	#税务指标
+	fd_dbr_1,
+	nl_1,
+	zzs_count_2,
+  qysds_count_2,
+	coverage_area,
+	xydj_1,
+	wfwz_1,
+	nsrzt_1,
+	znj_12, 
+	znj_6,
+	qs_1,#当前欠税
+	round(TIMESTAMPDIFF(MONTH,str_do_date(sssqq_min_sb,'%Y-%m-%d'),SYSDATE()),2),
+	nsze_12,
+	lrze_1,
+	profit_ratio_1,
+	syzqy_1,
+	qbxse_12,
+	qbxse_2,
+	nslxmc_1,
+	qbxse_2_period,
+	qbxse_zzl_6,
+	qbxse_zzl_12,
+	xwfk_24,
+	xwfk_12,
+	xwfk_6,
+	xwfk_3,
+	SB_ZERO_CONTINUOUS_24,
+	SB_ZERO_COUNT_24,
+	assb_1,
+	
+	##工商规则
+	fr_chigu_gs,
+	bgcs_fr, 
+	bgrq_fr,
+	nsrzt_gs,
+	holding_duration,#申请人持股时长
+	
+	###司法规则
+	bzxr_1,
+	bzxr_3,
+	shixin_bzxr_3,
+	shixin_bzxr_5,
+	ban_entry_exit_cs,
+	ban_high_consumption_cs,
+	criminal_or_suspect,
+	judicial_blacklist,
+	cpws_ccbq
+	
+	##限制性行业
+	);
+	
+	
+	#MySQL实现列转换为行 label 
+
+	DROP TABLE if EXISTS temp_index_values;
+	CREATE TEMPORARY TABLE temp_index_vaules
+	(nsrsbh VARCHAR(30),
+	index_1 VARCHAR(30),
+	index_value VARCHAR(3000)
+	);
+	
+	
+	open a_cursor;
+	read_loop:loop
+	FETCH a_cursor into colname;
+	set v_sql = CONCAT('SELECT ',colname,' INTO @colvalue FROM T_MOD_IND_CAL_RESULT_XYYH_CSFH WHERE nsrsbh = v_nsrsbh;');
+	set @v_sql = v_sql;
+	
+	PREPARE pre FROM @v_sql;
+	EXECUTE pre;
+	DEALLOCATE PREPARE pre;
+	
+	IF done then 
+		LEAVE read_loop;
+  END IF;
+	
+	INSERT INTO temp_index_vaules (nsrsbh,index_1,index_value)
+	VALUES(v_nsrsbh,colname,@colvalue);
+	
+	COMMIT;
+	end loop;
+	CLOSE a_cursor;
+
+	
+	
+	
+	
+
+	
+	
+		 
+END

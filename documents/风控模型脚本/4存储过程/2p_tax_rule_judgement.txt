@@ -1,0 +1,196 @@
+CREATE  PROCEDURE `p_tax_rule_judgement`(IN V_NSRSBH VARCHAR(60),
+																																		out PREACCESSDESC VARCHAR(3600),
+																																	  out ysx_1 varchar(60)	)
+begin
+
+  DECLARE colname VARCHAR(60);
+	DECLARE v_sql VARCHAR(1000);
+	
+	#游标结束标识
+	declare done int default false; 
+	DECLARE detail_done int DEFAULT false;
+	
+	#规则判断游标中用到的变量
+	declare index_dm1 varchar(3600);
+	declare index_value1 varchar(3600);
+	declare DIRECTION1 varchar(3600);
+	declare RULE_LIMIT1 varchar(3600);
+	declare rule_no1 varchar(3600);
+	declare rule_description1 varchar(3600);
+	declare same_or1 varchar(3600);
+  
+	
+	
+	declare cnt1 varchar(60);
+	
+	
+	DECLARE a_cursor CURSOR FOR SELECT COLUMN_NAME FROM information_schema.columns WHERE table_name= 'T_MOD_IND_CAL_RESULT_XYYH_CSFH' AND COLUMN_NAME != 'NSRSBH';
+	#且规则游标
+	declare tax_cursor1 CURSOR for 
+	(SELECT 
+			       a.index_dm,
+             b.index_value,
+             DIRECTION,
+             a.RULE_LIMIT,
+             rule_no,
+             rule_description,
+             same_or
+	FROM tax_rule_set_info_xyyh_csfh a LEFT join 
+				temp_index_values b
+				on upper(index_dm) = upper(index_1)
+				WHERE flag = 1 and lower(SAME_OR) = '且');
+
+	#或规则游标
+	DECLARE  tax_corsor2 cursor for
+      (select substr(rule_no, 1, 4) rule_no,
+             count(*) cnt,
+             group_concat(RULE_DESCRIPTION) RULE_DESCRIPTION
+        from tax_rule_set_info_xyyh_csfh
+       where flag = 1
+         and lower(SAME_OR) = '或'
+       group by substr(rule_no, 1, 4)
+			 );
+	
+
+	
+	declare continue HANDLER for not found set done = true;
+	
+	
+	
+	DROP TABLE if EXISTS temp_index_values;
+	CREATE TEMPORARY TABLE temp_index_values
+	(nsrsbh VARCHAR(60),
+	index_1 VARCHAR(30),
+	index_value VARCHAR(3000)
+	);
+	
+	
+	#进行行列转置
+	set @v_nsrsbh = v_nsrsbh;
+	open a_cursor;
+	read_loop:loop
+	FETCH a_cursor into colname;
+	set @v_sql = concat("SELECT ",colname," INTO @colvalue FROM T_MOD_IND_CAL_RESULT_XYYH_CSFH WHERE NSRSBH =  @v_nsrsbh;");
+	PREPARE pre FROM @v_sql;
+	EXECUTE pre;
+	DEALLOCATE PREPARE pre;
+	
+	IF done then 
+		LEAVE read_loop;
+  END IF;
+	
+	INSERT INTO temp_index_values (nsrsbh,index_1,index_value)
+	VALUES(V_NSRSBH,colname,@colvalue);
+	
+	COMMIT;
+	end loop;
+	CLOSE a_cursor;
+	
+	
+	#进行且规则判断
+	set done = false;
+	open tax_cursor1;
+	tax_and_loop:loop
+	FETCH tax_cursor1 into index_dm1,index_value1,DIRECTION1,RULE_LIMIT1,rule_no1,rule_description1,same_or1;
+		
+		set @sql_statement = concat_ws('','select count(*) into @term_1 from dual where ','''',index_value1,'''',' ',DIRECTION1,' ',RULE_LIMIT1);
+		
+		
+		prepare pre FROM @sql_statement;
+		EXECUTE pre;
+		DEALLOCATE PREPARE pre;
+	
+	IF done then 
+		LEAVE tax_and_loop;
+	END IF;
+	
+	
+	if @term_1 >= 1 then
+		set @term_1 = 0;
+	else 
+		set @term_1 = 1;
+		set PREACCESSDESC = concat_ws('',PREACCESSDESC,rule_description1,index_value1,';');
+
+	end if;
+	
+	set @ysx_1 = @ysx_1 + @term_1;
+	
+  
+	end loop;
+	close tax_cursor1;
+	
+	
+	#或规则判断
+	set done = false;
+	open tax_corsor2;
+	tax_or_loop:loop
+	fetch tax_corsor2 into rule_no1,cnt1,rule_description1;
+		
+	if done then
+		leave tax_or_loop;
+	end if;
+	#内层循环
+	begin
+		DECLARE detail_done INT DEFAULT FALSE;
+		declare tax_cursor_inner cursor for 
+		(SELECT 
+			 a.index_dm,
+             b.index_value,
+             DIRECTION,
+             a.RULE_LIMIT,
+             rule_no,
+             rule_description,
+             same_or
+		FROM tax_rule_set_info_xyyh_csfh a LEFT join 
+				temp_index_values b
+				on upper(index_dm) = upper(index_1)
+				WHERE flag = 1 and lower(SAME_OR) = '或'
+				and substr(rule_no, 1, 4) = rule_no1
+				);
+		DECLARE CONTINUE HANDLER for not found set detail_done = true;
+		
+		set @term_1 = 0;
+		
+		open tax_cursor_inner;
+		tax_or_loop_inner:loop
+		fetch tax_cursor_inner into index_dm1,index_value1,DIRECTION1,RULE_LIMIT1,rule_no1,rule_description1,same_or1;
+		set @sql_statement = concat_ws('','select count(*) into @term_2 from dual where ','''',index_value1,'''',DIRECTION1,RULE_LIMIT1);
+		
+		prepare pre FROM @sql_statement;
+		EXECUTE pre;
+		DEALLOCATE PREPARE pre;
+		
+		IF detail_done then 
+			leave tax_or_loop_inner;
+		end if;
+		
+		set @term_or_value = concat_ws('',@term_or_value,';',index_value1);
+		set @term_1 = @term_1 + @term_2;
+		end loop;
+		close tax_cursor_inner;
+		
+	end;
+	
+	if @term_1 >= 1 then 
+		set @term_1 = 0;
+	else
+		set @term_1 = 1;
+		set PREACCESSDESC = concat_ws('',PREACCESSDESC,rule_description1,@term_or_value,';');
+	end if;
+	
+	set @ysx_1 = @ysx_1 + @term_1;
+	set @term_or_value = '';
+	set @term_1 = 0;
+	set @term_2 = 0;
+	
+	end loop;
+	close tax_corsor2;
+	
+
+	
+	set ysx_1 = @ysx_1;
+	
+
+	
+
+end
